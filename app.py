@@ -10,7 +10,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# Global CSS override for red starred items (title, star, hyperlinks)
+# Global CSS override for red starred items
 st.markdown("""
     <style>
     .starred-red, 
@@ -26,6 +26,17 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 DB_NAME = "screenings.db"
+
+def format_time_str(t_str):
+    """Formats screening times safely to HH:MM format (e.g., 21-30 -> 21:30)"""
+    if not t_str:
+        return ""
+    # Replace hyphens or French 'h' notations with colons
+    clean_t = str(t_str).strip().replace('-', ':').replace('h', ':').replace('H', ':')
+    parts = clean_t.split(':')
+    if len(parts) >= 2:
+        return f"{parts[0].zfill(2)}:{parts[1].zfill(2)}"
+    return clean_t
 
 def init_db():
     conn = sqlite3.connect(DB_NAME)
@@ -75,8 +86,8 @@ if "title" in query_params and "cinema" in query_params:
     in_title = query_params.get("title")
     in_cinema = query_params.get("cinema")
     in_date = query_params.get("date", datetime.today().strftime("%Y-%m-%d"))
-    in_time = query_params.get("time", "20:00")
-    in_end_time = query_params.get("end_time", "")
+    in_time = format_time_str(query_params.get("time", "20:00"))
+    in_end_time = format_time_str(query_params.get("end_time", ""))
     in_poster = query_params.get("poster", "")
     in_url = query_params.get("url", "")
 
@@ -243,11 +254,11 @@ if not df.empty:
                         else:
                             st.write(cinema_val)
 
-                    # Time Column
+                    # Time Column (Formats 21-30 to 21:30 cleanly)
                     with col3:
-                        time_val = str(row['screening_time']) if row['screening_time'] else ''
+                        time_val = format_time_str(row['screening_time'])
                         if row.get("end_time"):
-                            time_val += f" - {row['end_time']}"
+                            time_val += f" - {format_time_str(row['end_time'])}"
                         
                         if is_starred_item:
                             st.markdown(f'<span class="starred-red">{time_val}</span>', unsafe_allow_html=True)
