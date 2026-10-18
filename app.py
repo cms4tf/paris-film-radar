@@ -180,7 +180,7 @@ if not df.empty:
             for _, row in group_screenings.iterrows():
                 with st.container():
                     if is_admin:
-                        col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
+                        col1, col2, col3, col4, col5 = st.columns([3, 2, 2, 0.5, 0.5])
                     else:
                         col1, col2, col3 = st.columns([3, 2, 2])
 
@@ -199,6 +199,14 @@ if not df.empty:
                     
                     if is_admin:
                         with col4:
+                            # Pencil button to toggle edit state in session state
+                            edit_key = f"editing_{row['id']}"
+                            if edit_key not in st.session_state:
+                                st.session_state[edit_key] = False
+                            
+                            if st.button("✏️", key=f"btn_edit_{row['id']}"):
+                                st.session_state[edit_key] = not st.session_state[edit_key]
+                        with col5:
                             if st.button("Delete", key=f"del_{row['id']}"):
                                 conn = sqlite3.connect(DB_NAME)
                                 c = conn.cursor()
@@ -207,25 +215,24 @@ if not df.empty:
                                 conn.close()
                                 st.rerun()
 
-                    # Display saved formatting/presentation tags cleanly for public viewers
-                    if not is_admin:
-                        tag_parts = []
-                        if row.get("specialty_format"):
-                            tag_parts.append(row['specialty_format'])
-                        if row.get("presentation"):
-                            tag_parts.append(row['presentation'])
-                        if row.get("notes"):
-                            tag_parts.append(row['notes'])
-                        if tag_parts:
-                            st.caption(" • ".join(tag_parts))
+                    # Display saved formatting/presentation tags cleanly
+                    tag_parts = []
+                    if row.get("specialty_format"):
+                        tag_parts.append(row['specialty_format'])
+                    if row.get("presentation"):
+                        tag_parts.append(row['presentation'])
+                    if row.get("notes"):
+                        tag_parts.append(row['notes'])
+                    
+                    if tag_parts:
+                        st.caption(" • ".join(tag_parts))
 
-                    # Owner Edit Controls for Specialty Format, Presentation & Notes
-                    if is_admin:
-                        with st.expander("Edit Screening Details & Notes", expanded=False):
-                            # Specialty Format Selection
+                    # Owner Edit Form (Only opens if the pencil button for this item was clicked)
+                    if is_admin and st.session_state.get(f"editing_{row['id']}", False):
+                        with st.container():
+                            st.markdown("---")
                             format_options = ["None", "16mm", "35mm", "70mm", "3D", "IMAX", "4DX", "Other"]
                             current_fmt = row.get("specialty_format", "")
-                            
                             base_fmt = current_fmt if current_fmt in format_options[1:] else ("Other" if current_fmt else "None")
                             fmt_index = format_options.index(base_fmt) if base_fmt in format_options else 0
                             
@@ -238,10 +245,8 @@ if not df.empty:
                             elif selected_fmt != "None":
                                 final_fmt = selected_fmt
 
-                            # Presentation Selection
                             pres_options = ["None", "Director", "Cast", "Crew", "Cinéclub", "Masterclass", "Open Air", "Cinéconcert", "Other"]
                             current_pres = row.get("presentation", "")
-                            
                             base_pres = current_pres if current_pres in pres_options[1:] else ("Other" if current_pres else "None")
                             pres_index = pres_options.index(base_pres) if base_pres in pres_options else 0
                             
@@ -254,23 +259,25 @@ if not df.empty:
                             elif selected_pres != "None":
                                 final_pres = selected_pres
 
-                            # General Notes
                             current_notes = row["notes"] if row["notes"] is not None else ""
                             new_notes = st.text_input("Additional Notes", value=current_notes, key=f"notes_{row['id']}")
 
-                            # Save changes button for this item
-                            if st.button("Save Changes", key=f"save_{row['id']}"):
-                                conn = sqlite3.connect(DB_NAME)
-                                c = conn.cursor()
-                                c.execute("""
-                                    UPDATE screenings 
-                                    SET specialty_format = ?, presentation = ?, notes = ? 
-                                    WHERE id = ?
-                                """, (final_fmt, final_pres, new_notes, row['id']))
-                                conn.commit()
-                                conn.close()
-                                st.success("Updated!")
-                                st.rerun()
+                            col_save, col_cancel = st.columns([1, 5])
+                            with col_save:
+                                if st.button("Save", key=f"save_{row['id']}"):
+                                    conn = sqlite3.connect(DB_NAME)
+                                    c = conn.cursor()
+                                    c.execute("""
+                                        UPDATE screenings 
+                                        SET specialty_format = ?, presentation = ?, notes = ? 
+                                        WHERE id = ?
+                                    """, (final_fmt, final_pres, new_notes, row['id']))
+                                    conn.commit()
+                                    conn.close()
+                                    st.session_state[f"editing_{row['id']}"] = False
+                                    st.success("Updated!")
+                                    st.rerun()
+                            st.markdown("---")
 
             st.divider()
     else:
