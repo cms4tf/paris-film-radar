@@ -1,77 +1,102 @@
 import sqlite3
 import streamlit as st
 from datetime import datetime
-import urllib.parse
+import pandas as pd
 
-# Function to parse an ICS text string
-def parse_ics(ics_content):
-    event_data = {
-        "title": "Unknown Film",
-        "cinema": "Paris Cinema",
-        "screening_date": datetime.today().strftime("%Y-%m-%d"),
-        "screening_time": "20:00",
-        "end_time": "",
-        "url": ""
-    }
-    
-    lines = ics_content.splitlines()
-    for line in lines:
-        if line.startswith("SUMMARY:"):
-            event_data["title"] = line.replace("SUMMARY:", "").strip()
-        elif line.startswith("LOCATION:"):
-            event_data["cinema"] = line.replace("LOCATION:", "").strip()
-        elif line.startswith("DTSTART:"):
-            dt_str = line.replace("DTSTART:", "").strip()
-            # Parse format like 20231024T171500Z
-            try:
-                dt = datetime.strptime(dt_str, "%Y%m%dT%H%M%SZ")
-                event_data["screening_date"] = dt.strftime("%Y-%m-%d")
-                event_data["screening_time"] = dt.strftime("%H:%M")
-            except ValueError:
-                pass
-        elif line.startswith("DTEND:"):
-            dt_str = line.replace("DTEND:", "").strip()
-            try:
-                dt = datetime.strptime(dt_str, "%Y%m%dT%H%M%SZ")
-                event_data["end_time"] = dt.strftime("%H:%M")
-            except ValueError:
-                pass
-        elif line.startswith("URL:"):
-            event_data["url"] = line.replace("URL:", "").strip()
-            
-    return event_data
+# Page Configuration
+st.set_page_config(
+    page_title="Paris Film Radar", 
+    page_icon="🎬", 
+    layout="wide"
+)
 
-# Streamlit Sidebar UI for ICS upload
-st.sidebar.divider()
-st.sidebar.header("📅 Import Filmorama ICS")
-uploaded_ics = st.sidebar.file_uploader("Upload screening .ics file", type=["ics"])
+DB_NAME = "screenings.db"
 
-if uploaded_ics is not None:
-    ics_text = uploaded_ics.getvalue().decode("utf-8")
-    parsed = parse_ics(ics_text)
+def init_db():
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS screenings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT,
+            cinema TEXT,
+            screening_date TEXT,
+            screening_time TEXT,
+            end_time TEXT,
+            format TEXT,
+            status TEXT,
+            url TEXT,
+            notes TEXT
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+# Initialize database on load
+init_db()
+
+# --- Auto-save incoming bookmarklet data ---
+query_params = st.query_params
+if "title" in query_params and "cinema" in query_params:
+    in_title = query_params.get("title")
+    in_cinema = query_params.get("cinema")
+    in_date = query_params.get("date", datetime.today().strftime("%Y-%m-%d"))
+    in_time = query_params.get("time", "20:00")
+    in_end_time = query_params.get("end_time", "")
+    in_url = query_params.get("url", "")
+
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("""
+        INSERT INTO screenings (title, cinema, screening_date, screening_time, end_time, format, status, url, notes) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        in_title, 
+        in_cinema, 
+        in_date, 
+        in_time, 
+        in_end_time, 
+        "VOST", 
+        "Scheduled", 
+        in_url, 
+        "Bookmarklet Import"
+    ))
+    conn.commit()
+    conn.close()
+
+    # Clear query params so it doesn't duplicate on page refresh
+    st.query_params.clear()
     
-    st.sidebar.write(f"**Title:** {parsed['title']}")
-    st.sidebar.write(f"**Cinema:** {parsed['cinema']}")
-    st.sidebar.write(f"**Time:** {parsed['screening_time']} - {parsed['end_time']}")
+    # Success banner
+    st.success(f"✅ Automatically added: **{in_title}** at **{in_cinema}** ({in_time} - {in_end_time})")
+
+# --- Main Dashboard UI ---
+st.title("🎬 Paris Film Radar Dashboard")
+st.write("Click your Filmorama bookmarklet on any screening page to instantly save it here.")
+
+# Fetch and display screenings
+conn = sqlite3.connect(DB_NAME)
+c = conn.cursor()
+c.execute("SELECT id, title, cinema, screening_date, screening_time, end_time, format, status, url FROM screenings ORDER BY screening_date, screening_time")
+rows = c.fetchall()
+conn.close()
+
+if rows:
+    st.subheader("Your Saved Screenings")
+    df = pd.DataFrame(rows, columns=["ID", "Title", "Cinema", "Date", "Start", "End", "Format", "Status", "URL"])
+    st.dataframe(df, use_container_width=True)
     
-    if st.sidebar.button("Save to Dashboard"):
-        conn = sqlite3.connect(DB_NAME)
-        c = conn.cursor()
-        c.execute("""
-            INSERT INTO screenings (title, cinema, screening_date, screening_time, end_time, format, status, url, notes) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            parsed["title"], 
-            parsed["cinema"], 
-            parsed["screening_date"], 
-            parsed["screening_time"], 
-            parsed["end_time"], 
-            "VOST", 
-            "Scheduled", 
-            parsed["url"], 
-            "ICS Import"
-        ))
-        conn.commit()
-        conn.close()
-        st.sidebar.success("Saved successfully!")
-        st.rerun()
+    # Management section to delete entries if needed
+    with st.expander("⚙️ Manage / Delete Screenings"):
+        del_id = st.number_input("Enter ID of screening to delete", min_value=0, step=1)
+        if st.button("Delete Screening"):
+            if del_id > 0:
+                conn = sqlite3.connect(DB_NAME)
+                c = conn.cursor()
+                c.execute("DELETE FROM screenings WHERE id = ?", (del_id,))
+                conn.commit()
+                conn.close()
+                st.success(f"Deleted screening ID {del_id}")
+                st.rerun()
+else:
+    st.info("No screenings saved yet. Click your bookmarklet on Filmorama to add your first one!")
