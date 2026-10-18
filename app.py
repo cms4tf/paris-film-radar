@@ -10,23 +10,17 @@ st.set_page_config(
     layout="wide"
 )
 
-# Global CSS override for red starred items (title, star, hyperlinks, hover)
+# Global CSS override for red starred items (title, star, hyperlinks)
 st.markdown("""
     <style>
     .starred-red, 
     .starred-red a, 
-    .starred-red span, 
-    .starred-red p, 
-    .starred-red div {
+    .starred-red span {
         color: #dc2626 !important;
-        fill: #dc2626 !important;
+        font-weight: bold;
     }
     .starred-red a {
         text-decoration: underline;
-        font-weight: bold;
-    }
-    .starred-red a:hover {
-        color: #b91c1c !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -75,7 +69,7 @@ def init_db():
 # Initialize database on load
 init_db()
 
-# --- Auto-save incoming bookmarklet data (Protected by Owner Password) ---
+# --- Auto-save incoming bookmarklet data ---
 query_params = st.query_params
 if "title" in query_params and "cinema" in query_params:
     in_title = query_params.get("title")
@@ -112,7 +106,7 @@ if "title" in query_params and "cinema" in query_params:
     conn.close()
 
     st.query_params.clear()
-    st.success(f"Successfully added: **{in_title}** at **{in_cinema}** ({in_time} - {in_end_time})")
+    st.success(f"Successfully added: **{in_title}** at **{in_cinema}** ({in_time})")
 
 # --- Dashboard Header ---
 st.title("Paris Film Radar")
@@ -135,7 +129,7 @@ df = pd.read_sql_query("SELECT * FROM screenings ORDER BY screening_date, screen
 conn.close()
 
 if not df.empty:
-    # --- Sidebar Filtering, Grouping & Sorting Controls ---
+    # --- Sidebar Filtering Controls ---
     st.sidebar.header("Filter & View")
     
     all_films = ["All"] + sorted(df["title"].dropna().unique().tolist())
@@ -195,7 +189,7 @@ if not df.empty:
             st.markdown(f"### {header_str}")
             group_screenings = filtered_df[filtered_df[g_col] == g_val].copy()
 
-            # Display manual synopsis under header only when grouping by Film
+            # Display synopsis under header only when grouping by Film
             if primary_group == "Film" and not group_screenings.empty:
                 first_row = group_screenings.iloc[0]
                 synopsis_text = first_row.get("synopsis", "")
@@ -224,22 +218,140 @@ if not df.empty:
                 with st.container():
                     col1, col2, col3 = st.columns([4, 2, 2])
 
-                    # Title & Link formatting
                     raw_title = f"★ {row['title']}" if is_starred_item else row['title']
                     if is_private_item and is_admin:
                         raw_title = f"[PRIVATE] {raw_title}"
 
+                    # Title & Link Column
                     with col1:
                         if is_starred_item:
-                            if row["url"]:
-                                title_html = f'<div class="starred-red"><strong><a href="{row["url"]}" target="_blank">{raw_title}</a></strong></div>'
+                            if row.get("url"):
+                                st.markdown(f'<span class="starred-red"><a href="{row["url"]}" target="_blank">{raw_title}</a></span>', unsafe_allow_html=True)
                             else:
-                                title_html = f'<div class="starred-red"><strong>{raw_title}</strong></div>'
-                            st.markdown(title_html, unsafe_allow_html=True)
+                                st.markdown(f'<span class="starred-red">{raw_title}</span>', unsafe_allow_html=True)
                         else:
-                            if row["url"]:
+                            if row.get("url"):
                                 st.markdown(f"**[{raw_title}]({row['url']})**")
                             else:
                                 st.markdown(f"**{raw_title}**")
 
-                    # Cinema column
+                    # Cinema Column
+                    with col2:
+                        cinema_val = str(row['cinema']) if row['cinema'] else ''
+                        if is_starred_item:
+                            st.markdown(f'<span class="starred-red">{cinema_val}</span>', unsafe_allow_html=True)
+                        else:
+                            st.write(cinema_val)
+
+                    # Time Column
+                    with col3:
+                        time_val = str(row['screening_time']) if row['screening_time'] else ''
+                        if row.get("end_time"):
+                            time_val += f" - {row['end_time']}"
+                        
+                        if is_starred_item:
+                            st.markdown(f'<span class="starred-red">{time_val}</span>', unsafe_allow_html=True)
+                        else:
+                            st.write(time_val)
+                    
+                    # Tags & Notes Row
+                    tag_parts = []
+                    if is_starred_item:
+                        tag_parts.append("Starred / Priority Selection")
+                    if row.get("specialty_format"):
+                        tag_parts.append(row['specialty_format'])
+                    if row.get("presentation"):
+                        tag_parts.append(row['presentation'])
+                    if row.get("notes"):
+                        tag_parts.append(row['notes'])
+                    
+                    if tag_parts:
+                        full_tag_str = " • ".join(tag_parts)
+                        if is_starred_item:
+                            st.markdown(f'<span class="starred-red">{full_tag_str}</span>', unsafe_allow_html=True)
+                        else:
+                            st.caption(full_tag_str)
+
+                    # Owner Actions (Edit / Delete)
+                    if is_admin:
+                        action_spacer, action_edit, action_del = st.columns([6, 1, 1])
+                        with action_edit:
+                            edit_key = f"editing_{row['id']}"
+                            if edit_key not in st.session_state:
+                                st.session_state[edit_key] = False
+                            
+                            if st.button("Edit", key=f"btn_edit_{row['id']}"):
+                                st.session_state[edit_key] = not st.session_state[edit_key]
+                        with action_del:
+                            if st.button("Delete", key=f"del_{row['id']}"):
+                                conn = sqlite3.connect(DB_NAME)
+                                c = conn.cursor()
+                                c.execute("DELETE FROM screenings WHERE id = ?", (row['id'],))
+                                conn.commit()
+                                conn.close()
+                                st.rerun()
+
+                        # Owner Edit Box
+                        if st.session_state.get(f"editing_{row['id']}", False):
+                            with st.container():
+                                st.markdown("---")
+                                col_t1, col_t2 = st.columns(2)
+                                with col_t1:
+                                    current_starred = bool(row.get("starred", 0))
+                                    new_starred = st.checkbox("Star this screening (Priority)", value=current_starred, key=f"star_chk_{row['id']}")
+                                with col_t2:
+                                    current_private = bool(row.get("private", 0))
+                                    new_private = st.checkbox("Hide from public view", value=current_private, key=f"priv_chk_{row['id']}")
+
+                                current_synopsis = row.get("synopsis", "") if row.get("synopsis") is not None else ""
+                                new_synopsis = st.text_area("Film Synopsis", value=current_synopsis, key=f"synopsis_{row['id']}")
+
+                                all_fmt_options = ["16mm", "35mm", "70mm", "3D", "IMAX", "4DX"]
+                                current_fmt_str = row.get("specialty_format", "") if row.get("specialty_format") is not None else ""
+                                
+                                existing_fmt_list = [f.strip() for f in current_fmt_str.split(",") if f.strip()]
+                                default_fmt_selected = [f for f in existing_fmt_list if f in all_fmt_options]
+                                custom_fmt_initial = ", ".join([f for f in existing_fmt_list if f not in all_fmt_options])
+
+                                selected_fmt_list = st.multiselect("Specialty Formats", all_fmt_options, default=default_fmt_selected, key=f"fmt_multi_{row['id']}")
+                                custom_fmt_input = st.text_input("Or specify custom format(s)", value=custom_fmt_initial, key=f"fmt_custom_{row['id']}")
+
+                                combined_fmts = selected_fmt_list.copy()
+                                if custom_fmt_input.strip():
+                                    combined_fmts.extend([c.strip() for c in custom_fmt_input.split(",") if c.strip()])
+                                final_fmt = ", ".join(combined_fmts)
+
+                                all_pres_options = ["Director", "Cast", "Crew", "Cinéclub", "Masterclass", "Open Air", "Cinéconcert", "Avant-Première"]
+                                current_pres_str = row.get("presentation", "") if row.get("presentation") is not None else ""
+                                default_pres_list = [p.strip() for p in current_pres_str.split(",") if p.strip() in all_pres_options]
+                                
+                                selected_pres_list = st.multiselect("Presentation / Event Types", all_pres_options, default=default_pres_list, key=f"pres_multi_{row['id']}")
+                                final_pres = ", ".join(selected_pres_list)
+
+                                current_notes = row["notes"] if row["notes"] is not None else ""
+                                new_notes = st.text_input("Additional Notes", value=current_notes, key=f"notes_{row['id']}")
+
+                                if st.button("Save Changes", key=f"save_{row['id']}"):
+                                    conn = sqlite3.connect(DB_NAME)
+                                    c = conn.cursor()
+                                    c.execute("""
+                                        UPDATE screenings 
+                                        SET specialty_format = ?, presentation = ?, notes = ?, starred = ?, private = ?, synopsis = ? 
+                                        WHERE id = ?
+                                    """, (final_fmt, final_pres, new_notes, 1 if new_starred else 0, 1 if new_private else 0, new_synopsis, row['id']))
+                                    conn.commit()
+                                    conn.close()
+                                    st.session_state[f"editing_{row['id']}"] = False
+                                    st.success("Updated!")
+                                    st.rerun()
+                                st.markdown("---")
+
+            st.divider()
+    else:
+        st.info("No screenings match your current filters.")
+
+    if is_admin:
+        with st.expander("View Raw Table & Management"):
+            st.dataframe(filtered_df, use_container_width=True)
+else:
+    st.info("No screenings saved yet. Use your Filmorama bookmarklet to add screenings.")
