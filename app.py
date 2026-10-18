@@ -77,8 +77,8 @@ df = pd.read_sql_query("SELECT * FROM screenings ORDER BY screening_date, screen
 conn.close()
 
 if not df.empty:
-    # --- Sidebar Filtering & Sorting Controls ---
-    st.sidebar.header("Filter & Sort")
+    # --- Sidebar Filtering, Grouping & Sorting Controls ---
+    st.sidebar.header("Filter & View")
     
     # Overall Filters
     all_films = ["All"] + sorted(df["title"].dropna().unique().tolist())
@@ -99,40 +99,67 @@ if not df.empty:
     if selected_cinema != "All":
         filtered_df = filtered_df[filtered_df["cinema"] == selected_cinema]
 
-    # Sorting option within dates
+    # Grouping & Secondary Sorting Options
     st.sidebar.divider()
-    st.sidebar.header("Sorting within Dates")
-    sort_option = st.sidebar.selectbox("Sort screenings by", ["Time", "Film", "Cinema"])
-
-    # --- Display Separated by Date ---
-    st.subheader("Screenings by Date")
+    st.sidebar.header("Grouping & Sorting")
     
-    unique_dates = sorted(filtered_df["screening_date"].dropna().unique())
+    primary_group = st.sidebar.selectbox("Group by", ["Date", "Film", "Cinema"], index=0)
     
-    if unique_dates:
-        for d in unique_dates:
-            # Parse YYYY-MM-DD into "Day of week, Date Month" (e.g., Monday, 19 October)
-            try:
-                dt_obj = datetime.strptime(d, "%Y-%m-%d")
-                formatted_date_str = dt_obj.strftime("%A, %d %B")
-            except ValueError:
-                formatted_date_str = d
+    # Dynamic secondary sort options based on primary group rules
+    if primary_group == "Date":
+        sort_options = ["Cinema", "Film", "Time"]
+        default_sort_index = 0  # Default to Cinema when grouped by date
+    elif primary_group == "Film":
+        sort_options = ["Date", "Cinema"]
+        default_sort_index = 0
+    else:  # Cinema
+        sort_options = ["Date", "Film"]
+        default_sort_index = 0
+        
+    secondary_sort = st.sidebar.selectbox("Sort within group by", sort_options, index=default_sort_index)
 
-            st.markdown(f"### {formatted_date_str}")
-            day_screenings = filtered_df[filtered_df["screening_date"] == d].copy()
+    # --- Display Grouped & Sorted Screenings ---
+    st.subheader(f"Screenings Grouped by {primary_group}")
+    
+    group_col_map = {"Date": "screening_date", "Film": "title", "Cinema": "cinema"}
+    g_col = group_col_map[primary_group]
+    
+    unique_groups = sorted(filtered_df[g_col].dropna().unique())
+    
+    if unique_groups:
+        for g_val in unique_groups:
+            # Format header nicely if group is Date, otherwise use value directly
+            if primary_group == "Date":
+                try:
+                    dt_obj = datetime.strptime(g_val, "%Y-%m-%d")
+                    header_str = dt_obj.strftime("%A, %d %B")
+                except ValueError:
+                    header_str = g_val
+            else:
+                header_str = g_val
+
+            st.markdown(f"### {header_str}")
+            group_screenings = filtered_df[filtered_df[g_col] == g_val].copy()
             
-            # Apply intra-date sorting
-            if sort_option == "Film":
-                day_screenings = day_screenings.sort_values(by="title")
-            elif sort_option == "Cinema":
-                day_screenings = day_screenings.sort_values(by="cinema")
-            else:  # Time
-                day_screenings = day_screenings.sort_values(by="screening_time")
+            # Apply secondary sorting
+            sort_col_map = {
+                "Time": "screening_time", 
+                "Cinema": "cinema", 
+                "Film": "title", 
+                "Date": "screening_date"
+            }
+            s_col = sort_col_map[secondary_sort]
+            group_screenings = group_screenings.sort_values(by=s_col)
 
-            for _, row in day_screenings.iterrows():
+            for _, row in group_screenings.iterrows():
                 with st.container():
                     col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
                     with col1:
+                        if primary_group != "Film":
+                            display_title = row['title']
+                        else:
+                            display_title = row['screening_date'] # Show date or venue context if grouped by film
+                            
                         if row["url"]:
                             st.markdown(f"**[{row['title']}]({row['url']})**")
                         else:
