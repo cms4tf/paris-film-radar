@@ -10,15 +10,6 @@ st.set_page_config(
     layout="wide"
 )
 
-# Custom CSS for Starred Screening Red Text Highlighting
-st.markdown("""
-    <style>
-    .starred-screening-text * {
-        color: #dc2626 !important;
-    }
-    </style>
-""", unsafe_allow_html=True)
-
 DB_NAME = "screenings.db"
 
 def init_db():
@@ -213,31 +204,38 @@ if not df.empty:
                         st.divider()
                     continue
 
-                wrapper_class = "starred-screening-text" if is_starred_item else ""
-
                 with st.container():
-                    if wrapper_class:
-                        st.markdown(f'<div class="{wrapper_class}">', unsafe_allow_html=True)
-
                     # Main screening info row
                     col1, col2, col3 = st.columns([4, 2, 2])
 
                     with col1:
-                        title_display = f"★ {row['title']}" if is_starred_item else row['title']
+                        raw_title = f"★ {row['title']}" if is_starred_item else row['title']
                         if is_private_item and is_admin:
-                            title_display = f"[PRIVATE] {title_display}"
+                            raw_title = f"[PRIVATE] {raw_title}"
 
-                        if row["url"]:
-                            st.markdown(f"**[{title_display}]({row['url']})**")
+                        title_text = f"**[{raw_title}]({row['url']})**" if row["url"] else f"**{raw_title}**"
+                        
+                        if is_starred_item:
+                            st.markdown(f":red[{title_text}]")
                         else:
-                            st.markdown(f"**{title_display}**")
+                            st.markdown(title_text)
+
                     with col2:
-                        st.text(row['cinema'])
+                        cinema_text = row['cinema']
+                        if is_starred_item:
+                            st.markdown(f":red[{cinema_text}]")
+                        else:
+                            st.text(cinema_text)
+
                     with col3:
                         time_str = f"{row['screening_time']}"
                         if row["end_time"]:
                             time_str += f" - {row['end_time']}"
-                        st.text(time_str)
+                        
+                        if is_starred_item:
+                            st.markdown(f":red[{time_str}]")
+                        else:
+                            st.text(time_str)
                     
                     # Display saved formatting/presentation tags cleanly
                     tag_parts = []
@@ -251,10 +249,11 @@ if not df.empty:
                         tag_parts.append(row['notes'])
                     
                     if tag_parts:
-                        st.caption(" • ".join(tag_parts))
-
-                    if wrapper_class:
-                        st.markdown('</div>', unsafe_allow_html=True)
+                        full_tag_str = " • ".join(tag_parts)
+                        if is_starred_item:
+                            st.markdown(f":red[**{full_tag_str}**]")
+                        else:
+                            st.caption(full_tag_str)
 
                     # Owner Action Row right-justified with tight button placement
                     if is_admin:
