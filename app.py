@@ -120,7 +120,7 @@ if "title" in query_params and "cinema" in query_params:
 
 # --- Dashboard Header ---
 st.title("Paris Film Radar")
-st.write("Curated screening schedule.")
+st.write("Corey's personal curated screening schedule.")
 st.divider()
 
 # --- Owner Authentication (Sidebar) ---
@@ -197,7 +197,8 @@ if not df.empty:
             else:
                 header_str = g_val
 
-            st.markdown(f"### {header_str}")
+            # Centered group header (especially for day/date)
+            st.markdown(f"<h3 style='text-align: center;'>{header_str}</h3>", unsafe_allow_html=True)
             group_screenings = filtered_df[filtered_df[g_col] == g_val].copy()
 
             # Display synopsis under header only when grouping by Film
@@ -227,7 +228,8 @@ if not df.empty:
                     continue
 
                 with st.container():
-                    col1, col2, col3 = st.columns([4, 2, 2])
+                    # Reduced column width for the title column [3, 2, 2]
+                    col1, col2, col3 = st.columns([3, 2, 2])
 
                     raw_title = f"★ {row['title']}" if is_starred_item else row['title']
                     if is_private_item and is_admin:
