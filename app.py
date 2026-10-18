@@ -179,10 +179,8 @@ if not df.empty:
 
             for _, row in group_screenings.iterrows():
                 with st.container():
-                    if is_admin:
-                        col1, col2, col3, col4, col5 = st.columns([3, 2, 2, 0.5, 0.5])
-                    else:
-                        col1, col2, col3 = st.columns([3, 2, 2])
+                    # Main screening info row with flexible variable widths
+                    col1, col2, col3 = st.columns([4, 2, 2])
 
                     with col1:
                         if row["url"]:
@@ -197,24 +195,6 @@ if not df.empty:
                             time_str += f" - {row['end_time']}"
                         st.text(time_str)
                     
-                    if is_admin:
-                        with col4:
-                            # Pencil button to toggle edit state in session state
-                            edit_key = f"editing_{row['id']}"
-                            if edit_key not in st.session_state:
-                                st.session_state[edit_key] = False
-                            
-                            if st.button("✏️", key=f"btn_edit_{row['id']}"):
-                                st.session_state[edit_key] = not st.session_state[edit_key]
-                        with col5:
-                            if st.button("Delete", key=f"del_{row['id']}"):
-                                conn = sqlite3.connect(DB_NAME)
-                                c = conn.cursor()
-                                c.execute("DELETE FROM screenings WHERE id = ?", (row['id'],))
-                                conn.commit()
-                                conn.close()
-                                st.rerun()
-
                     # Display saved formatting/presentation tags cleanly
                     tag_parts = []
                     if row.get("specialty_format"):
@@ -227,44 +207,61 @@ if not df.empty:
                     if tag_parts:
                         st.caption(" • ".join(tag_parts))
 
-                    # Owner Edit Form (Only opens if the pencil button for this item was clicked)
-                    if is_admin and st.session_state.get(f"editing_{row['id']}", False):
-                        with st.container():
-                            st.markdown("---")
-                            format_options = ["None", "16mm", "35mm", "70mm", "3D", "IMAX", "4DX", "Other"]
-                            current_fmt = row.get("specialty_format", "")
-                            base_fmt = current_fmt if current_fmt in format_options[1:] else ("Other" if current_fmt else "None")
-                            fmt_index = format_options.index(base_fmt) if base_fmt in format_options else 0
+                    # Separate Owner Action Row for Edit (Pencil) and Delete (Trashcan)
+                    if is_admin:
+                        btn_col1, btn_col2, btn_col3 = st.columns([0.5, 0.5, 9])
+                        with btn_col1:
+                            edit_key = f"editing_{row['id']}"
+                            if edit_key not in st.session_state:
+                                st.session_state[edit_key] = False
                             
-                            selected_fmt = st.selectbox("Specialty Format", format_options, index=fmt_index, key=f"fmt_sel_{row['id']}")
-                            
-                            final_fmt = ""
-                            if selected_fmt == "Other":
-                                custom_fmt = st.text_input("Specify Format", value=current_fmt if current_fmt not in format_options else "", key=f"fmt_custom_{row['id']}")
-                                final_fmt = custom_fmt
-                            elif selected_fmt != "None":
-                                final_fmt = selected_fmt
+                            if st.button("✏️", key=f"btn_edit_{row['id']}"):
+                                st.session_state[edit_key] = not st.session_state[edit_key]
+                        with btn_col2:
+                            if st.button("🗑️", key=f"del_{row['id']}"):
+                                conn = sqlite3.connect(DB_NAME)
+                                c = conn.cursor()
+                                c.execute("DELETE FROM screenings WHERE id = ?", (row['id'],))
+                                conn.commit()
+                                conn.close()
+                                st.rerun()
 
-                            pres_options = ["None", "Director", "Cast", "Crew", "Cinéclub", "Masterclass", "Open Air", "Cinéconcert", "Other"]
-                            current_pres = row.get("presentation", "")
-                            base_pres = current_pres if current_pres in pres_options[1:] else ("Other" if current_pres else "None")
-                            pres_index = pres_options.index(base_pres) if base_pres in pres_options else 0
-                            
-                            selected_pres = st.selectbox("Presentation / Event Type", pres_options, index=pres_index, key=f"pres_sel_{row['id']}")
-                            
-                            final_pres = ""
-                            if selected_pres == "Other":
-                                custom_pres = st.text_input("Specify Presentation Details", value=current_pres if current_pres not in pres_options else "", key=f"pres_custom_{row['id']}")
-                                final_pres = custom_pres
-                            elif selected_pres != "None":
-                                final_pres = selected_pres
+                        # Owner Edit Form (Toggled by the pencil button)
+                        if st.session_state.get(f"editing_{row['id']}", False):
+                            with st.container():
+                                st.markdown("---")
+                                format_options = ["None", "16mm", "35mm", "70mm", "3D", "IMAX", "4DX", "Other"]
+                                current_fmt = row.get("specialty_format", "")
+                                base_fmt = current_fmt if current_fmt in format_options[1:] else ("Other" if current_fmt else "None")
+                                fmt_index = format_options.index(base_fmt) if base_fmt in format_options else 0
+                                
+                                selected_fmt = st.selectbox("Specialty Format", format_options, index=fmt_index, key=f"fmt_sel_{row['id']}")
+                                
+                                final_fmt = ""
+                                if selected_fmt == "Other":
+                                    custom_fmt = st.text_input("Specify Format", value=current_fmt if current_fmt not in format_options else "", key=f"fmt_custom_{row['id']}")
+                                    final_fmt = custom_fmt
+                                elif selected_fmt != "None":
+                                    final_fmt = selected_fmt
 
-                            current_notes = row["notes"] if row["notes"] is not None else ""
-                            new_notes = st.text_input("Additional Notes", value=current_notes, key=f"notes_{row['id']}")
+                                pres_options = ["None", "Director", "Cast", "Crew", "Cinéclub", "Masterclass", "Open Air", "Cinéconcert", "Other"]
+                                current_pres = row.get("presentation", "")
+                                base_pres = current_pres if current_pres in pres_options[1:] else ("Other" if current_pres else "None")
+                                pres_index = pres_options.index(base_pres) if base_pres in pres_options else 0
+                                
+                                selected_pres = st.selectbox("Presentation / Event Type", pres_options, index=pres_index, key=f"pres_sel_{row['id']}")
+                                
+                                final_pres = ""
+                                if selected_pres == "Other":
+                                    custom_pres = st.text_input("Specify Presentation Details", value=current_pres if current_pres not in pres_options else "", key=f"pres_custom_{row['id']}")
+                                    final_pres = custom_pres
+                                elif selected_pres != "None":
+                                    final_pres = selected_pres
 
-                            col_save, col_cancel = st.columns([1, 5])
-                            with col_save:
-                                if st.button("Save", key=f"save_{row['id']}"):
+                                current_notes = row["notes"] if row["notes"] is not None else ""
+                                new_notes = st.text_input("Additional Notes", value=current_notes, key=f"notes_{row['id']}")
+
+                                if st.button("Save Changes", key=f"save_{row['id']}"):
                                     conn = sqlite3.connect(DB_NAME)
                                     c = conn.cursor()
                                     c.execute("""
@@ -277,7 +274,7 @@ if not df.empty:
                                     st.session_state[f"editing_{row['id']}"] = False
                                     st.success("Updated!")
                                     st.rerun()
-                            st.markdown("---")
+                                st.markdown("---")
 
             st.divider()
     else:
