@@ -10,7 +10,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# Global style override for red starred links
+# Global style override for red starred links and details
 st.markdown("""
     <style>
     .starred-title, .starred-title a {
@@ -76,6 +76,7 @@ if "title" in query_params and "cinema" in query_params:
     in_end_time = query_params.get("end_time", "")
     in_poster = query_params.get("poster", "")
     in_url = query_params.get("url", "")
+    in_synopsis = query_params.get("synopsis", "")  # Captures synopsis passed from bookmarklet
 
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
@@ -97,7 +98,7 @@ if "title" in query_params and "cinema" in query_params:
         "",
         0,
         0,
-        ""
+        in_synopsis
     ))
     conn.commit()
     conn.close()
@@ -188,7 +189,7 @@ if not df.empty:
             st.markdown(f"### {header_str}")
             group_screenings = filtered_df[filtered_df[g_col] == g_val].copy()
 
-            # If grouped by Film, display synopsis right under the header if available
+            # Display synopsis under header only when grouping by Film
             if primary_group == "Film" and not group_screenings.empty:
                 first_row = group_screenings.iloc[0]
                 synopsis_text = first_row.get("synopsis", "")
@@ -208,7 +209,7 @@ if not df.empty:
                 is_private_item = bool(row.get("private", 0))
                 is_starred_item = (row.get("starred", 0) == 1)
 
-                # If it's private and not admin, show a clean placeholder instead of hiding the day entirely
+                # Public placeholder for private screenings
                 if is_private_item and not is_admin:
                     with st.container():
                         st.markdown("*[Private schedule]*")
@@ -304,59 +305,5 @@ if not df.empty:
                                     current_private = bool(row.get("private", 0))
                                     new_private = st.checkbox("Hide from public view", value=current_private, key=f"priv_chk_{row['id']}")
 
-                                # Film Synopsis input (applies to the film title)
+                                # Film Synopsis input
                                 current_synopsis = row.get("synopsis", "") if row.get("synopsis") is not None else ""
-                                new_synopsis = st.text_area("Film Synopsis", value=current_synopsis, key=f"synopsis_{row['id']}")
-
-                                # Specialty Format Multi-select & Custom input
-                                all_fmt_options = ["16mm", "35mm", "70mm", "3D", "IMAX", "4DX"]
-                                current_fmt_str = row.get("specialty_format", "") if row.get("specialty_format") is not None else ""
-                                
-                                existing_fmt_list = [f.strip() for f in current_fmt_str.split(",") if f.strip()]
-                                default_fmt_selected = [f for f in existing_fmt_list if f in all_fmt_options]
-                                custom_fmt_initial = ", ".join([f for f in existing_fmt_list if f not in all_fmt_options])
-
-                                selected_fmt_list = st.multiselect("Specialty Formats", all_fmt_options, default=default_fmt_selected, key=f"fmt_multi_{row['id']}")
-                                custom_fmt_input = st.text_input("Or specify custom format(s)", value=custom_fmt_initial, key=f"fmt_custom_{row['id']}")
-
-                                combined_fmts = selected_fmt_list.copy()
-                                if custom_fmt_input.strip():
-                                    combined_fmts.extend([c.strip() for c in custom_fmt_input.split(",") if c.strip()])
-                                final_fmt = ", ".join(combined_fmts)
-
-                                # Presentation Multi-select
-                                all_pres_options = ["Director", "Cast", "Crew", "Cinéclub", "Masterclass", "Open Air", "Cinéconcert", "Avant-Première"]
-                                current_pres_str = row.get("presentation", "") if row.get("presentation") is not None else ""
-                                default_pres_list = [p.strip() for p in current_pres_str.split(",") if p.strip() in all_pres_options]
-                                
-                                selected_pres_list = st.multiselect("Presentation / Event Types", all_pres_options, default=default_pres_list, key=f"pres_multi_{row['id']}")
-                                final_pres = ", ".join(selected_pres_list)
-
-                                current_notes = row["notes"] if row["notes"] is not None else ""
-                                new_notes = st.text_input("Additional Notes", value=current_notes, key=f"notes_{row['id']}")
-
-                                if st.button("Save Changes", key=f"save_{row['id']}"):
-                                    conn = sqlite3.connect(DB_NAME)
-                                    c = conn.cursor()
-                                    c.execute("""
-                                        UPDATE screenings 
-                                        SET specialty_format = ?, presentation = ?, notes = ?, starred = ?, private = ?, synopsis = ? 
-                                        WHERE id = ?
-                                    """, (final_fmt, final_pres, new_notes, 1 if new_starred else 0, 1 if new_private else 0, new_synopsis, row['id']))
-                                    conn.commit()
-                                    conn.close()
-                                    st.session_state[f"editing_{row['id']}"] = False
-                                    st.success("Updated!")
-                                    st.rerun()
-                                st.markdown("---")
-
-            st.divider()
-    else:
-        st.info("No screenings match your current filters.")
-
-    # Full data table view option (Only visible to owner)
-    if is_admin:
-        with st.expander("View Raw Table & Management"):
-            st.dataframe(filtered_df, use_container_width=True)
-else:
-    st.info("No screenings saved yet. Use your Filmorama bookmarklet to add screenings.")
