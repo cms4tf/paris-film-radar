@@ -207,17 +207,17 @@ if not df.empty:
                     if tag_parts:
                         st.caption(" • ".join(tag_parts))
 
-                    # Owner Action Row with comfortable, fixed-width buttons
+                    # Owner Action Row right-justified with tight button placement
                     if is_admin:
-                        action_col1, action_col2, action_col3 = st.columns([1, 1, 4])
-                        with action_col1:
+                        action_spacer, action_edit, action_del = st.columns([6, 1, 1])
+                        with action_edit:
                             edit_key = f"editing_{row['id']}"
                             if edit_key not in st.session_state:
                                 st.session_state[edit_key] = False
                             
                             if st.button("Edit", key=f"btn_edit_{row['id']}"):
                                 st.session_state[edit_key] = not st.session_state[edit_key]
-                        with action_col2:
+                        with action_del:
                             if st.button("Delete", key=f"del_{row['id']}"):
                                 conn = sqlite3.connect(DB_NAME)
                                 c = conn.cursor()
