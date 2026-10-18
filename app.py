@@ -64,39 +64,76 @@ if "title" in query_params and "cinema" in query_params:
     conn.commit()
     conn.close()
 
-    # Clear query params so it doesn't duplicate on page refresh
     st.query_params.clear()
-    
-    # Success banner
     st.success(f"✅ Automatically added: **{in_title}** at **{in_cinema}** ({in_time} - {in_end_time})")
 
-# --- Main Dashboard UI ---
-st.title("🎬 Paris Film Radar Dashboard")
-st.write("Click your Filmorama bookmarklet on any screening page to instantly save it here.")
+# --- Dashboard Header ---
+st.title("🎬 Paris Film Radar")
+st.write("Your personal curated screening schedule.")
 
-# Fetch and display screenings
+# --- Fetch Data ---
 conn = sqlite3.connect(DB_NAME)
-c = conn.cursor()
-c.execute("SELECT id, title, cinema, screening_date, screening_time, end_time, format, status, url FROM screenings ORDER BY screening_date, screening_time")
-rows = c.fetchall()
+df = pd.read_sql_query("SELECT * FROM screenings ORDER BY screening_date, screening_time", conn)
 conn.close()
 
-if rows:
-    st.subheader("Your Saved Screenings")
-    df = pd.DataFrame(rows, columns=["ID", "Title", "Cinema", "Date", "Start", "End", "Format", "Status", "URL"])
-    st.dataframe(df, use_container_width=True)
+if not df.empty:
+    # --- Sidebar Filtering & Sorting Controls ---
+    st.sidebar.header("🔍 Filter & Sort")
     
-    # Management section to delete entries if needed
-    with st.expander("⚙️ Manage / Delete Screenings"):
-        del_id = st.number_input("Enter ID of screening to delete", min_value=0, step=1)
-        if st.button("Delete Screening"):
-            if del_id > 0:
-                conn = sqlite3.connect(DB_NAME)
-                c = conn.cursor()
-                c.execute("DELETE FROM screenings WHERE id = ?", (del_id,))
-                conn.commit()
-                conn.close()
-                st.success(f"Deleted screening ID {del_id}")
-                st.rerun()
+    # Cinema Filter
+    all_cinemas = ["All"] + sorted(df["cinema"].dropna().unique().tolist())
+    selected_cinema = st.sidebar.selectbox("Filter by Cinema", all_cinemas)
+    
+    # Date Filter
+    all_dates = ["All"] + sorted(df["screening_date"].dropna().unique().tolist())
+    selected_date = st.sidebar.selectbox("Filter by Date", all_dates)
+    
+    # Apply Filters
+    filtered_df = df.copy()
+    if selected_cinema != "All":
+        filtered_df = filtered_df[filtered_df["cinema"] == selected_cinema]
+    if selected_date != "All":
+        filtered_df = filtered_df[filtered_df["screening_date"] == selected_date]
+
+    # --- Display Separated by Date ---
+    st.subheader("📅 Screenings by Date")
+    
+    unique_dates = sorted(filtered_df["screening_date"].dropna().unique())
+    
+    if unique_dates:
+        for d in unique_dates:
+            st.markdown(f"### 🗓️ {d}")
+            day_screenings = filtered_df[filtered_df["screening_date"] == d]
+            
+            for _, row in day_screenings.iterrows():
+                with st.container():
+                    col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
+                    with col1:
+                        if row["url"]:
+                            st.markdown(f"**[{row['title']}]({row['url']})**")
+                        else:
+                            st.markdown(f"**{row['title']}**")
+                    with col2:
+                        st.text(f"📍 {row['cinema']}")
+                    with col3:
+                        time_str = f"⏰ {row['screening_time']}"
+                        if row["end_time"]:
+                            time_str += f" - {row['end_time']}"
+                        st.text(time_str)
+                    with col4:
+                        if st.button("🗑️", key=f"del_{row['id']}"):
+                            conn = sqlite3.connect(DB_NAME)
+                            c = conn.cursor()
+                            c.execute("DELETE FROM screenings WHERE id = ?", (row['id'],))
+                            conn.commit()
+                            conn.close()
+                            st.rerun()
+            st.divider()
+    else:
+        st.info("No screenings match your current filters.")
+
+    # Full data table view option
+    with st.expander("📊 View Raw Table & Management"):
+        st.dataframe(filtered_df, use_container_width=True)
 else:
-    st.info("No screenings saved yet. Click your bookmarklet on Filmorama to add your first one!")
+    st.info("No screenings saved yet. Use your Filmorama bookmarklet to add screenings.")
