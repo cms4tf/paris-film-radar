@@ -140,7 +140,7 @@ if not df.empty:
                     with col2:
                         st.text(f"📍 {row['cinema']}")
                     with col3:
-                        time_str = f"⏰ {row['screening_time']}"
+                        time_str = f"{row['screening_time']}"
                         if row["end_time"]:
                             time_str += f" - {row['end_time']}"
                         st.text(time_str)
