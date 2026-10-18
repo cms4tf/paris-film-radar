@@ -30,7 +30,8 @@ def init_db():
             poster_url TEXT,
             specialty_format TEXT,
             presentation TEXT,
-            starred INTEGER DEFAULT 0
+            starred INTEGER DEFAULT 0,
+            private INTEGER DEFAULT 0
         )
     ''')
     # Safe migrations if table already existed without these columns
@@ -39,7 +40,8 @@ def init_db():
         ("notes", "TEXT"), 
         ("specialty_format", "TEXT"), 
         ("presentation", "TEXT"),
-        ("starred", "INTEGER DEFAULT 0")
+        ("starred", "INTEGER DEFAULT 0"),
+        ("private", "INTEGER DEFAULT 0")
     ]:
         try:
             c.execute(f"ALTER TABLE screenings ADD COLUMN {col} {col_type}")
@@ -65,8 +67,8 @@ if "title" in query_params and "cinema" in query_params:
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
     c.execute("""
-        INSERT INTO screenings (title, cinema, screening_date, screening_time, end_time, format, status, url, notes, poster_url, specialty_format, presentation, starred) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO screenings (title, cinema, screening_date, screening_time, end_time, format, status, url, notes, poster_url, specialty_format, presentation, starred, private) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         in_title, 
         in_cinema, 
@@ -80,6 +82,7 @@ if "title" in query_params and "cinema" in query_params:
         in_poster,
         "",
         "",
+        0,
         0
     ))
     conn.commit()
@@ -92,6 +95,17 @@ if "title" in query_params and "cinema" in query_params:
 st.title("Paris Film Radar")
 st.write("Corey's personal curated screening schedule.")
 
+# --- Owner Authentication (Sidebar) ---
+st.sidebar.divider()
+st.sidebar.header("Owner Mode")
+
+owner_password = "GODARD68"
+entered_password = st.sidebar.text_input("Enter password to edit", type="password")
+is_admin = (entered_password == owner_password)
+
+if is_admin:
+    st.sidebar.success("Owner mode unlocked.")
+
 # --- Fetch Data ---
 conn = sqlite3.connect(DB_NAME)
 df = pd.read_sql_query("SELECT * FROM screenings ORDER BY screening_date, screening_time", conn)
@@ -99,6 +113,7 @@ conn.close()
 
 if not df.empty:
     # --- Sidebar Filtering, Grouping & Sorting Controls ---
+    st.sidebar.divider()
     st.sidebar.header("Filter & View")
     
     # Overall Filters
@@ -138,17 +153,6 @@ if not df.empty:
         
     secondary_sort = st.sidebar.selectbox("Sort within group by", sort_options, index=default_sort_index)
 
-    # --- Owner Authentication (Sidebar) ---
-    st.sidebar.divider()
-    st.sidebar.header("Owner Mode")
-    
-    owner_password = "GODARD68"
-    entered_password = st.sidebar.text_input("Enter password to edit", type="password")
-    is_admin = (entered_password == owner_password)
-
-    if is_admin:
-        st.sidebar.success("Owner mode unlocked.")
-
     # --- Display Grouped & Sorted Screenings ---
     st.subheader(f"Screenings Grouped by {primary_group}")
     
@@ -181,12 +185,24 @@ if not df.empty:
             group_screenings = group_screenings.sort_values(by=s_col)
 
             for _, row in group_screenings.iterrows():
+                is_private_item = bool(row.get("private", 0))
+
+                # If it's private and not admin, show a clean placeholder instead of hiding the day entirely
+                if is_private_item and not is_admin:
+                    with st.container():
+                        st.markdown("*[Private schedule]*")
+                        st.divider()
+                    continue
+
                 with st.container():
                     # Main screening info row
                     col1, col2, col3 = st.columns([4, 2, 2])
 
                     with col1:
                         title_display = f"★ {row['title']}" if row.get("starred") == 1 else row['title']
+                        if is_private_item and is_admin:
+                            title_display = f"[PRIVATE] {title_display}"
+
                         if row["url"]:
                             st.markdown(f"**[{title_display}]({row['url']})**")
                         else:
@@ -199,7 +215,7 @@ if not df.empty:
                             time_str += f" - {row['end_time']}"
                         st.text(time_str)
                     
-                    # Display saved formatting/presentation tags cleanly (including star indicator for friends)
+                    # Display saved formatting/presentation tags cleanly
                     tag_parts = []
                     if row.get("starred") == 1:
                         tag_parts.append("Starred / Priority Selection")
@@ -237,9 +253,14 @@ if not df.empty:
                             with st.container():
                                 st.markdown("---")
                                 
-                                # Star Toggle
-                                current_starred = bool(row.get("starred", 0))
-                                new_starred = st.checkbox("Star this screening (Priority)", value=current_starred, key=f"star_chk_{row['id']}")
+                                # Star & Private Toggles
+                                col_t1, col_t2 = st.columns(2)
+                                with col_t1:
+                                    current_starred = bool(row.get("starred", 0))
+                                    new_starred = st.checkbox("Star this screening (Priority)", value=current_starred, key=f"star_chk_{row['id']}")
+                                with col_t2:
+                                    current_private = bool(row.get("private", 0))
+                                    new_private = st.checkbox("Hide from public view", value=current_private, key=f"priv_chk_{row['id']}")
 
                                 format_options = ["None", "16mm", "35mm", "70mm", "3D", "IMAX", "4DX", "Other"]
                                 current_fmt = row.get("specialty_format", "")
@@ -277,9 +298,9 @@ if not df.empty:
                                     c = conn.cursor()
                                     c.execute("""
                                         UPDATE screenings 
-                                        SET specialty_format = ?, presentation = ?, notes = ?, starred = ? 
+                                        SET specialty_format = ?, presentation = ?, notes = ?, starred = ?, private = ? 
                                         WHERE id = ?
-                                    """, (final_fmt, final_pres, new_notes, 1 if new_starred else 0, row['id']))
+                                    """, (final_fmt, final_pres, new_notes, 1 if new_starred else 0, 1 if new_private else 0, row['id']))
                                     conn.commit()
                                     conn.close()
                                     st.session_state[f"editing_{row['id']}"] = False
