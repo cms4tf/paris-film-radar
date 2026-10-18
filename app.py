@@ -3,7 +3,6 @@ import streamlit as st
 from datetime import datetime
 import pandas as pd
 import random
-import time
 
 # Page Configuration
 st.set_page_config(
@@ -120,20 +119,30 @@ if "title" in query_params and "cinema" in query_params:
     st.query_params.clear()
     st.success(f"Successfully added: **{in_title}** at **{in_cinema}** ({in_time})")
 
-# --- Dynamic Cinematic Photo Stream ---
-# Generates a unique random seed per session load to pull a fresh film/cinema photo
-if "photo_seed" not in st.session_state:
-    st.session_state["photo_seed"] = int(time.time() * 1000) % 100000
+# --- Curated Film Poster Database Pool ---
+# Direct high-resolution links to classic gallery poster art
+CINEMA_POSTERS = [
+    ("À bout de souffle (1960)", "https://images.fineartamerica.com/images/artworkimages/mediumlarge/3/breathless-1960-jean-luc-godard-movie-poster.jpg"),
+    ("Pierrot le fou (1965)", "https://upload.wikimedia.org/wikipedia/en/3/33/Pierrot_le_fou_poster.jpg"),
+    ("Les Quatre Cents Coups (1959)", "https://upload.wikimedia.org/wikipedia/commons/d/d7/Les_Quatre_Cents_Coups_poster.jpg"),
+    ("Bande à part (1964)", "https://upload.wikimedia.org/wikipedia/en/2/2f/Band_of_Outsiders_poster.jpg"),
+    ("Cléo de 5 à 7 (1962)", "https://upload.wikimedia.org/wikipedia/en/9/93/Cleo_from_5_to_7_%28Movie_Poster%29.jpg"),
+    ("Alphaville (1965)", "https://upload.wikimedia.org/wikipedia/en/d/dc/Alphavilleposter.jpg"),
+    ("M (1931)", "https://upload.wikimedia.org/wikipedia/commons/2/22/M_poster_1931.jpg"),
+    ("The 400 Blows (French Release)", "https://upload.wikimedia.org/wikipedia/commons/d/d7/Les_Quatre_Cents_Coups_poster.jpg")
+]
 
-# Using a high-performance image CDN with randomized seed for true random variety
-random_film_photo = f"https://picsum.photos/seed/{st.session_state['photo_seed']}/1200/400"
+# Randomize a film poster once per session load
+if "current_poster" not in st.session_state:
+    st.session_state["current_poster"] = random.choice(CINEMA_POSTERS)
 
 # --- Dashboard Header ---
 st.title("Paris Film Radar")
 st.write("Corey's personal curated screening schedule.")
 
-# Display Banner
-st.image(random_film_photo, caption="Paris Film Radar Archive Banner", use_column_width=True)
+# Display Film Poster Banner
+poster_title, poster_url = st.session_state["current_poster"]
+st.image(poster_url, caption=f"Archive Poster: {poster_title}", use_column_width=True)
 st.divider()
 
 # --- Owner Authentication (Sidebar) ---
