@@ -10,6 +10,19 @@ st.set_page_config(
     layout="wide"
 )
 
+# Custom CSS for Starred Screening Highlight Cards
+st.markdown("""
+    <style>
+    .starred-screening-card {
+        border: 2px solid #3b82f6;
+        background-color: rgba(59, 130, 246, 0.04);
+        padding: 12px 16px;
+        border-radius: 8px;
+        margin-bottom: 12px;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
 DB_NAME = "screenings.db"
 
 def init_db():
@@ -195,6 +208,7 @@ if not df.empty:
 
             for _, row in group_screenings.iterrows():
                 is_private_item = bool(row.get("private", 0))
+                is_starred_item = (row.get("starred", 0) == 1)
 
                 # If it's private and not admin, show a clean placeholder instead of hiding the day entirely
                 if is_private_item and not is_admin:
@@ -203,12 +217,18 @@ if not df.empty:
                         st.divider()
                     continue
 
+                # Apply the styled container if starred, otherwise standard container
+                card_class = "starred-screening-card" if is_starred_item else ""
+                
                 with st.container():
+                    if card_class:
+                        st.markdown(f'<div class="{card_class}">', unsafe_allow_html=True)
+
                     # Main screening info row
                     col1, col2, col3 = st.columns([4, 2, 2])
 
                     with col1:
-                        title_display = f"★ {row['title']}" if row.get("starred") == 1 else row['title']
+                        title_display = f"★ {row['title']}" if is_starred_item else row['title']
                         if is_private_item and is_admin:
                             title_display = f"[PRIVATE] {title_display}"
 
@@ -226,7 +246,7 @@ if not df.empty:
                     
                     # Display saved formatting/presentation tags cleanly
                     tag_parts = []
-                    if row.get("starred") == 1:
+                    if is_starred_item:
                         tag_parts.append("Starred / Priority Selection")
                     if row.get("specialty_format"):
                         tag_parts.append(row['specialty_format'])
@@ -316,6 +336,9 @@ if not df.empty:
                                     st.success("Updated!")
                                     st.rerun()
                                 st.markdown("---")
+
+                    if card_class:
+                        st.markdown('</div>', unsafe_allow_html=True)
 
             st.divider()
     else:
