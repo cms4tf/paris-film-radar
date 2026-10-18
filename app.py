@@ -27,13 +27,22 @@ def init_db():
             status TEXT,
             url TEXT,
             notes TEXT,
-            poster_url TEXT
+            poster_url TEXT,
+            specialty_format TEXT,
+            presentation TEXT
         )
     ''')
-    try:
-        c.execute("ALTER TABLE screenings ADD COLUMN poster_url TEXT")
-    except sqlite3.OperationalError:
-        pass
+    # Safe migrations if table already existed without these columns
+    for col, col_type in [
+        ("poster_url", "TEXT"), 
+        ("notes", "TEXT"), 
+        ("specialty_format", "TEXT"), 
+        ("presentation", "TEXT")
+    ]:
+        try:
+            c.execute(f"ALTER TABLE screenings ADD COLUMN {col} {col_type}")
+        except sqlite3.OperationalError:
+            pass
     conn.commit()
     conn.close()
 
@@ -54,8 +63,8 @@ if "title" in query_params and "cinema" in query_params:
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
     c.execute("""
-        INSERT INTO screenings (title, cinema, screening_date, screening_time, end_time, format, status, url, notes, poster_url) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO screenings (title, cinema, screening_date, screening_time, end_time, format, status, url, notes, poster_url, specialty_format, presentation) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         in_title, 
         in_cinema, 
@@ -65,8 +74,10 @@ if "title" in query_params and "cinema" in query_params:
         "VOST", 
         "Scheduled", 
         in_url, 
-        "Bookmarklet Import",
-        in_poster
+        "",
+        in_poster,
+        "",
+        ""
     ))
     conn.commit()
     conn.close()
@@ -76,7 +87,7 @@ if "title" in query_params and "cinema" in query_params:
 
 # --- Dashboard Header ---
 st.title("Paris Film Radar")
-st.write("Your personal curated screening schedule.")
+st.write("Corey's personal curated screening schedule.")
 
 # --- Fetch Data ---
 conn = sqlite3.connect(DB_NAME)
@@ -195,6 +206,73 @@ if not df.empty:
                                 conn.commit()
                                 conn.close()
                                 st.rerun()
+
+                    # Display saved formatting/presentation tags for public viewers
+                    if not is_admin:
+                        tag_parts = []
+                        if row.get("specialty_format"):
+                            tag_parts.append(f"🎞️ {row['specialty_format']}")
+                        if row.get("presentation"):
+                            tag_parts.append(f"🎤 {row['presentation']}")
+                        if row.get("notes"):
+                            tag_parts.append(f"💬 {row['notes']}")
+                        if tag_parts:
+                            st.caption(" • ".join(tag_parts))
+
+                    # Owner Edit Controls for Specialty Format, Presentation & Notes
+                    if is_admin:
+                        with st.expander("✏️ Edit Screening Details & Notes", expanded=False):
+                            # Specialty Format Selection
+                            format_options = ["None", "16mm", "35mm", "70mm", "3D", "IMAX", "4DX", "Other"]
+                            current_fmt = row.get("specialty_format", "")
+                            
+                            # Determine index for selectbox
+                            base_fmt = current_fmt if current_fmt in format_options[1:] else ("Other" if current_fmt else "None")
+                            fmt_index = format_options.index(base_fmt) if base_fmt in format_options else 0
+                            
+                            selected_fmt = st.selectbox("Specialty Format", format_options, index=fmt_index, key=f"fmt_sel_{row['id']}")
+                            
+                            final_fmt = ""
+                            if selected_fmt == "Other":
+                                custom_fmt = st.text_input("Specify Format", value=current_fmt if current_fmt not in format_options else "", key=f"fmt_custom_{row['id']}")
+                                final_fmt = custom_fmt
+                            elif selected_fmt != "None":
+                                final_fmt = selected_fmt
+
+                            # Presentation Selection
+                            pres_options = ["None", "Director", "Cast", "Crew", "Cinéclub", "Masterclass", "Other"]
+                            current_pres = row.get("presentation", "")
+                            
+                            base_pres = current_pres if current_pres in pres_options[1:] else ("Other" if current_pres else "None")
+                            pres_index = pres_options.index(base_pres) if base_pres in pres_options else 0
+                            
+                            selected_pres = st.selectbox("Presentation / Event Type", pres_options, index=pres_index, key=f"pres_sel_{row['id']}")
+                            
+                            final_pres = ""
+                            if selected_pres == "Other":
+                                custom_pres = st.text_input("Specify Presentation Details", value=current_pres if current_pres not in pres_options else "", key=f"pres_custom_{row['id']}")
+                                final_pres = custom_pres
+                            elif selected_pres != "None":
+                                final_pres = selected_pres
+
+                            # General Notes
+                            current_notes = row["notes"] if row["notes"] is not None else ""
+                            new_notes = st.text_input("Additional Notes", value=current_notes, key=f"notes_{row['id']}")
+
+                            # Save changes button for this item
+                            if st.button("Save Changes", key=f"save_{row['id']}"):
+                                conn = sqlite3.connect(DB_NAME)
+                                c = conn.cursor()
+                                c.execute("""
+                                    UPDATE screenings 
+                                    SET specialty_format = ?, presentation = ?, notes = ? 
+                                    WHERE id = ?
+                                """, (final_fmt, final_pres, new_notes, row['id']))
+                                conn.commit()
+                                conn.close()
+                                st.success("Updated!")
+                                st.rerun()
+
             st.divider()
     else:
         st.info("No screenings match your current filters.")
