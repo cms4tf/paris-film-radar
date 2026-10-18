@@ -26,16 +26,21 @@ def init_db():
             format TEXT,
             status TEXT,
             url TEXT,
-            notes TEXT
+            notes TEXT,
+            poster_url TEXT
         )
     ''')
+    try:
+        c.execute("ALTER TABLE screenings ADD COLUMN poster_url TEXT")
+    except sqlite3.OperationalError:
+        pass
     conn.commit()
     conn.close()
 
 # Initialize database on load
 init_db()
 
-# --- Auto-save incoming bookmarklet data ---
+# --- Auto-save incoming bookmarklet data (Protected by Owner Password) ---
 query_params = st.query_params
 if "title" in query_params and "cinema" in query_params:
     in_title = query_params.get("title")
@@ -43,13 +48,14 @@ if "title" in query_params and "cinema" in query_params:
     in_date = query_params.get("date", datetime.today().strftime("%Y-%m-%d"))
     in_time = query_params.get("time", "20:00")
     in_end_time = query_params.get("end_time", "")
+    in_poster = query_params.get("poster", "")
     in_url = query_params.get("url", "")
 
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
     c.execute("""
-        INSERT INTO screenings (title, cinema, screening_date, screening_time, end_time, format, status, url, notes) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO screenings (title, cinema, screening_date, screening_time, end_time, format, status, url, notes, poster_url) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         in_title, 
         in_cinema, 
@@ -59,7 +65,8 @@ if "title" in query_params and "cinema" in query_params:
         "VOST", 
         "Scheduled", 
         in_url, 
-        "Bookmarklet Import"
+        "Bookmarklet Import",
+        in_poster
     ))
     conn.commit()
     conn.close()
@@ -105,18 +112,32 @@ if not df.empty:
     
     primary_group = st.sidebar.selectbox("Group by", ["Date", "Film", "Cinema"], index=0)
     
-    # Dynamic secondary sort options based on primary group rules
     if primary_group == "Date":
         sort_options = ["Cinema", "Film", "Time"]
-        default_sort_index = 0  # Default to Cinema when grouped by date
+        default_sort_index = 0
     elif primary_group == "Film":
         sort_options = ["Date", "Cinema"]
         default_sort_index = 0
-    else:  # Cinema
+    else:
         sort_options = ["Date", "Film"]
         default_sort_index = 0
         
     secondary_sort = st.sidebar.selectbox("Sort within group by", sort_options, index=default_sort_index)
+
+    # --- Owner Authentication (Sidebar) ---
+    st.sidebar.divider()
+    st.sidebar.header("🔒 Owner Mode")
+    
+    try:
+        owner_password = st.secrets.get("ADMIN_PASSWORD", "secretparisscreening")
+    except Exception:
+        owner_password = "secretparisscreening"
+
+    entered_password = st.sidebar.text_input("Enter password to edit", type="password")
+    is_admin = (entered_password == owner_password)
+
+    if is_admin:
+        st.sidebar.success("Owner mode unlocked.")
 
     # --- Display Grouped & Sorted Screenings ---
     st.subheader(f"Screenings Grouped by {primary_group}")
@@ -128,7 +149,6 @@ if not df.empty:
     
     if unique_groups:
         for g_val in unique_groups:
-            # Format header nicely if group is Date, otherwise use value directly
             if primary_group == "Date":
                 try:
                     dt_obj = datetime.strptime(g_val, "%Y-%m-%d")
@@ -141,7 +161,6 @@ if not df.empty:
             st.markdown(f"### {header_str}")
             group_screenings = filtered_df[filtered_df[g_col] == g_val].copy()
             
-            # Apply secondary sorting
             sort_col_map = {
                 "Time": "screening_time", 
                 "Cinema": "cinema", 
@@ -153,13 +172,12 @@ if not df.empty:
 
             for _, row in group_screenings.iterrows():
                 with st.container():
-                    col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
+                    if is_admin:
+                        col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
+                    else:
+                        col1, col2, col3 = st.columns([3, 2, 2])
+
                     with col1:
-                        if primary_group != "Film":
-                            display_title = row['title']
-                        else:
-                            display_title = row['screening_date'] # Show date or venue context if grouped by film
-                            
                         if row["url"]:
                             st.markdown(f"**[{row['title']}]({row['url']})**")
                         else:
@@ -171,20 +189,23 @@ if not df.empty:
                         if row["end_time"]:
                             time_str += f" - {row['end_time']}"
                         st.text(time_str)
-                    with col4:
-                        if st.button("🗑️", key=f"del_{row['id']}"):
-                            conn = sqlite3.connect(DB_NAME)
-                            c = conn.cursor()
-                            c.execute("DELETE FROM screenings WHERE id = ?", (row['id'],))
-                            conn.commit()
-                            conn.close()
-                            st.rerun()
+                    
+                    if is_admin:
+                        with col4:
+                            if st.button("🗑️", key=f"del_{row['id']}"):
+                                conn = sqlite3.connect(DB_NAME)
+                                c = conn.cursor()
+                                c.execute("DELETE FROM screenings WHERE id = ?", (row['id'],))
+                                conn.commit()
+                                conn.close()
+                                st.rerun()
             st.divider()
     else:
         st.info("No screenings match your current filters.")
 
-    # Full data table view option
-    with st.expander("View Raw Table & Management"):
-        st.dataframe(filtered_df, use_container_width=True)
+    # Full data table view option (Only visible to owner)
+    if is_admin:
+        with st.expander("View Raw Table & Management"):
+            st.dataframe(filtered_df, use_container_width=True)
 else:
     st.info("No screenings saved yet. Use your Filmorama bookmarklet to add screenings.")
