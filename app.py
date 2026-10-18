@@ -29,7 +29,8 @@ def init_db():
             notes TEXT,
             poster_url TEXT,
             specialty_format TEXT,
-            presentation TEXT
+            presentation TEXT,
+            starred INTEGER DEFAULT 0
         )
     ''')
     # Safe migrations if table already existed without these columns
@@ -37,7 +38,8 @@ def init_db():
         ("poster_url", "TEXT"), 
         ("notes", "TEXT"), 
         ("specialty_format", "TEXT"), 
-        ("presentation", "TEXT")
+        ("presentation", "TEXT"),
+        ("starred", "INTEGER DEFAULT 0")
     ]:
         try:
             c.execute(f"ALTER TABLE screenings ADD COLUMN {col} {col_type}")
@@ -63,8 +65,8 @@ if "title" in query_params and "cinema" in query_params:
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
     c.execute("""
-        INSERT INTO screenings (title, cinema, screening_date, screening_time, end_time, format, status, url, notes, poster_url, specialty_format, presentation) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO screenings (title, cinema, screening_date, screening_time, end_time, format, status, url, notes, poster_url, specialty_format, presentation, starred) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         in_title, 
         in_cinema, 
@@ -77,7 +79,8 @@ if "title" in query_params and "cinema" in query_params:
         "",
         in_poster,
         "",
-        ""
+        "",
+        0
     ))
     conn.commit()
     conn.close()
@@ -183,10 +186,11 @@ if not df.empty:
                     col1, col2, col3 = st.columns([4, 2, 2])
 
                     with col1:
+                        title_display = f"★ {row['title']}" if row.get("starred") == 1 else row['title']
                         if row["url"]:
-                            st.markdown(f"**[{row['title']}]({row['url']})**")
+                            st.markdown(f"**[{title_display}]({row['url']})**")
                         else:
-                            st.markdown(f"**{row['title']}**")
+                            st.markdown(f"**{title_display}**")
                     with col2:
                         st.text(row['cinema'])
                     with col3:
@@ -195,8 +199,10 @@ if not df.empty:
                             time_str += f" - {row['end_time']}"
                         st.text(time_str)
                     
-                    # Display saved formatting/presentation tags cleanly
+                    # Display saved formatting/presentation tags cleanly (including star indicator for friends)
                     tag_parts = []
+                    if row.get("starred") == 1:
+                        tag_parts.append("Starred / Priority Selection")
                     if row.get("specialty_format"):
                         tag_parts.append(row['specialty_format'])
                     if row.get("presentation"):
@@ -230,6 +236,11 @@ if not df.empty:
                         if st.session_state.get(f"editing_{row['id']}", False):
                             with st.container():
                                 st.markdown("---")
+                                
+                                # Star Toggle
+                                current_starred = bool(row.get("starred", 0))
+                                new_starred = st.checkbox("Star this screening (Priority)", value=current_starred, key=f"star_chk_{row['id']}")
+
                                 format_options = ["None", "16mm", "35mm", "70mm", "3D", "IMAX", "4DX", "Other"]
                                 current_fmt = row.get("specialty_format", "")
                                 base_fmt = current_fmt if current_fmt in format_options[1:] else ("Other" if current_fmt else "None")
@@ -266,9 +277,9 @@ if not df.empty:
                                     c = conn.cursor()
                                     c.execute("""
                                         UPDATE screenings 
-                                        SET specialty_format = ?, presentation = ?, notes = ? 
+                                        SET specialty_format = ?, presentation = ?, notes = ?, starred = ? 
                                         WHERE id = ?
-                                    """, (final_fmt, final_pres, new_notes, row['id']))
+                                    """, (final_fmt, final_pres, new_notes, 1 if new_starred else 0, row['id']))
                                     conn.commit()
                                     conn.close()
                                     st.session_state[f"editing_{row['id']}"] = False
