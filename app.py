@@ -235,4 +235,50 @@ if not df.empty:
                             if selected_fmt == "Other":
                                 custom_fmt = st.text_input("Specify Format", value=current_fmt if current_fmt not in format_options else "", key=f"fmt_custom_{row['id']}")
                                 final_fmt = custom_fmt
-                            elif selected_fmt !=
+                            elif selected_fmt != "None":
+                                final_fmt = selected_fmt
+
+                            # Presentation Selection
+                            pres_options = ["None", "Director", "Cast", "Crew", "Cinéclub", "Masterclass", "Open Air", "Cinéconcert", "Other"]
+                            current_pres = row.get("presentation", "")
+                            
+                            base_pres = current_pres if current_pres in pres_options[1:] else ("Other" if current_pres else "None")
+                            pres_index = pres_options.index(base_pres) if base_pres in pres_options else 0
+                            
+                            selected_pres = st.selectbox("Presentation / Event Type", pres_options, index=pres_index, key=f"pres_sel_{row['id']}")
+                            
+                            final_pres = ""
+                            if selected_pres == "Other":
+                                custom_pres = st.text_input("Specify Presentation Details", value=current_pres if current_pres not in pres_options else "", key=f"pres_custom_{row['id']}")
+                                final_pres = custom_pres
+                            elif selected_pres != "None":
+                                final_pres = selected_pres
+
+                            # General Notes
+                            current_notes = row["notes"] if row["notes"] is not None else ""
+                            new_notes = st.text_input("Additional Notes", value=current_notes, key=f"notes_{row['id']}")
+
+                            # Save changes button for this item
+                            if st.button("Save Changes", key=f"save_{row['id']}"):
+                                conn = sqlite3.connect(DB_NAME)
+                                c = conn.cursor()
+                                c.execute("""
+                                    UPDATE screenings 
+                                    SET specialty_format = ?, presentation = ?, notes = ? 
+                                    WHERE id = ?
+                                """, (final_fmt, final_pres, new_notes, row['id']))
+                                conn.commit()
+                                conn.close()
+                                st.success("Updated!")
+                                st.rerun()
+
+            st.divider()
+    else:
+        st.info("No screenings match your current filters.")
+
+    # Full data table view option (Only visible to owner)
+    if is_admin:
+        with st.expander("View Raw Table & Management"):
+            st.dataframe(filtered_df, use_container_width=True)
+else:
+    st.info("No screenings saved yet. Use your Filmorama bookmarklet to add screenings.")
