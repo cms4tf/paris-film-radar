@@ -31,7 +31,8 @@ def init_db():
             specialty_format TEXT,
             presentation TEXT,
             starred INTEGER DEFAULT 0,
-            private INTEGER DEFAULT 0
+            private INTEGER DEFAULT 0,
+            synopsis TEXT
         )
     ''')
     # Safe migrations if table already existed without these columns
@@ -41,7 +42,8 @@ def init_db():
         ("specialty_format", "TEXT"), 
         ("presentation", "TEXT"),
         ("starred", "INTEGER DEFAULT 0"),
-        ("private", "INTEGER DEFAULT 0")
+        ("private", "INTEGER DEFAULT 0"),
+        ("synopsis", "TEXT")
     ]:
         try:
             c.execute(f"ALTER TABLE screenings ADD COLUMN {col} {col_type}")
@@ -67,8 +69,8 @@ if "title" in query_params and "cinema" in query_params:
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
     c.execute("""
-        INSERT INTO screenings (title, cinema, screening_date, screening_time, end_time, format, status, url, notes, poster_url, specialty_format, presentation, starred, private) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO screenings (title, cinema, screening_date, screening_time, end_time, format, status, url, notes, poster_url, specialty_format, presentation, starred, private, synopsis) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         in_title, 
         in_cinema, 
@@ -83,7 +85,8 @@ if "title" in query_params and "cinema" in query_params:
         "",
         "",
         0,
-        0
+        0,
+        ""
     ))
     conn.commit()
     conn.close()
@@ -173,6 +176,13 @@ if not df.empty:
 
             st.markdown(f"### {header_str}")
             group_screenings = filtered_df[filtered_df[g_col] == g_val].copy()
+
+            # If grouped by Film, display synopsis right under the header if available
+            if primary_group == "Film" and not group_screenings.empty:
+                first_row = group_screenings.iloc[0]
+                synopsis_text = first_row.get("synopsis", "")
+                if synopsis_text:
+                    st.info(synopsis_text)
             
             sort_col_map = {
                 "Time": "screening_time", 
@@ -261,11 +271,14 @@ if not df.empty:
                                     current_private = bool(row.get("private", 0))
                                     new_private = st.checkbox("Hide from public view", value=current_private, key=f"priv_chk_{row['id']}")
 
+                                # Film Synopsis input (applies to the film title)
+                                current_synopsis = row.get("synopsis", "") if row.get("synopsis") is not None else ""
+                                new_synopsis = st.text_area("Film Synopsis", value=current_synopsis, key=f"synopsis_{row['id']}")
+
                                 # Specialty Format Multi-select & Custom input
                                 all_fmt_options = ["16mm", "35mm", "70mm", "3D", "IMAX", "4DX"]
                                 current_fmt_str = row.get("specialty_format", "") if row.get("specialty_format") is not None else ""
                                 
-                                # Separate out any pre-existing custom formats not in the preset list
                                 existing_fmt_list = [f.strip() for f in current_fmt_str.split(",") if f.strip()]
                                 default_fmt_selected = [f for f in existing_fmt_list if f in all_fmt_options]
                                 custom_fmt_initial = ", ".join([f for f in existing_fmt_list if f not in all_fmt_options])
@@ -273,7 +286,6 @@ if not df.empty:
                                 selected_fmt_list = st.multiselect("Specialty Formats", all_fmt_options, default=default_fmt_selected, key=f"fmt_multi_{row['id']}")
                                 custom_fmt_input = st.text_input("Or specify custom format(s)", value=custom_fmt_initial, key=f"fmt_custom_{row['id']}")
 
-                                # Combine multi-select and custom inputs for formats
                                 combined_fmts = selected_fmt_list.copy()
                                 if custom_fmt_input.strip():
                                     combined_fmts.extend([c.strip() for c in custom_fmt_input.split(",") if c.strip()])
@@ -295,9 +307,9 @@ if not df.empty:
                                     c = conn.cursor()
                                     c.execute("""
                                         UPDATE screenings 
-                                        SET specialty_format = ?, presentation = ?, notes = ?, starred = ?, private = ? 
+                                        SET specialty_format = ?, presentation = ?, notes = ?, starred = ?, private = ?, synopsis = ? 
                                         WHERE id = ?
-                                    """, (final_fmt, final_pres, new_notes, 1 if new_starred else 0, 1 if new_private else 0, row['id']))
+                                    """, (final_fmt, final_pres, new_notes, 1 if new_starred else 0, 1 if new_private else 0, new_synopsis, row['id']))
                                     conn.commit()
                                     conn.close()
                                     st.session_state[f"editing_{row['id']}"] = False
