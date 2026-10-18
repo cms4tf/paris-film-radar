@@ -113,7 +113,6 @@ conn.close()
 
 if not df.empty:
     # --- Sidebar Filtering, Grouping & Sorting Controls ---
-    st.sidebar.divider()
     st.sidebar.header("Filter & View")
     
     # Overall Filters
@@ -262,14 +261,27 @@ if not df.empty:
                                     current_private = bool(row.get("private", 0))
                                     new_private = st.checkbox("Hide from public view", value=current_private, key=f"priv_chk_{row['id']}")
 
-                                # Specialty Format as a standard text input
-                                current_fmt = row.get("specialty_format", "") if row.get("specialty_format") is not None else ""
-                                new_fmt = st.text_input("Specialty Format (e.g. 35mm, IMAX)", value=current_fmt, key=f"fmt_text_{row['id']}")
+                                # Specialty Format Multi-select & Custom input
+                                all_fmt_options = ["16mm", "35mm", "70mm", "3D", "IMAX", "4DX"]
+                                current_fmt_str = row.get("specialty_format", "") if row.get("specialty_format") is not None else ""
+                                
+                                # Separate out any pre-existing custom formats not in the preset list
+                                existing_fmt_list = [f.strip() for f in current_fmt_str.split(",") if f.strip()]
+                                default_fmt_selected = [f for f in existing_fmt_list if f in all_fmt_options]
+                                custom_fmt_initial = ", ".join([f for f in existing_fmt_list if f not in all_fmt_options])
+
+                                selected_fmt_list = st.multiselect("Specialty Formats", all_fmt_options, default=default_fmt_selected, key=f"fmt_multi_{row['id']}")
+                                custom_fmt_input = st.text_input("Or specify custom format(s)", value=custom_fmt_initial, key=f"fmt_custom_{row['id']}")
+
+                                # Combine multi-select and custom inputs for formats
+                                combined_fmts = selected_fmt_list.copy()
+                                if custom_fmt_input.strip():
+                                    combined_fmts.extend([c.strip() for c in custom_fmt_input.split(",") if c.strip()])
+                                final_fmt = ", ".join(combined_fmts)
 
                                 # Presentation Multi-select
                                 all_pres_options = ["Director", "Cast", "Crew", "Cinéclub", "Masterclass", "Open Air", "Cinéconcert", "Avant-Première"]
                                 current_pres_str = row.get("presentation", "") if row.get("presentation") is not None else ""
-                                # Parse existing stored comma-separated presentations into a list for default values
                                 default_pres_list = [p.strip() for p in current_pres_str.split(",") if p.strip() in all_pres_options]
                                 
                                 selected_pres_list = st.multiselect("Presentation / Event Types", all_pres_options, default=default_pres_list, key=f"pres_multi_{row['id']}")
@@ -285,7 +297,7 @@ if not df.empty:
                                         UPDATE screenings 
                                         SET specialty_format = ?, presentation = ?, notes = ?, starred = ?, private = ? 
                                         WHERE id = ?
-                                    """, (new_fmt, final_pres, new_notes, 1 if new_starred else 0, 1 if new_private else 0, row['id']))
+                                    """, (final_fmt, final_pres, new_notes, 1 if new_starred else 0, 1 if new_private else 0, row['id']))
                                     conn.commit()
                                     conn.close()
                                     st.session_state[f"editing_{row['id']}"] = False
