@@ -83,7 +83,7 @@ if "title" in query_params and "cinema" in query_params:
     conn.close()
 
     st.query_params.clear()
-    st.success(f"✅ Automatically added: **{in_title}** at **{in_cinema}** ({in_time} - {in_end_time})")
+    st.success(f"Successfully added: **{in_title}** at **{in_cinema}** ({in_time} - {in_end_time})")
 
 # --- Dashboard Header ---
 st.title("Paris Film Radar")
@@ -137,7 +137,7 @@ if not df.empty:
 
     # --- Owner Authentication (Sidebar) ---
     st.sidebar.divider()
-    st.sidebar.header("🔒 Owner Mode")
+    st.sidebar.header("Owner Mode")
     
     owner_password = "GODARD68"
     entered_password = st.sidebar.text_input("Enter password to edit", type="password")
@@ -190,7 +190,7 @@ if not df.empty:
                         else:
                             st.markdown(f"**{row['title']}**")
                     with col2:
-                        st.text(f"📍 {row['cinema']}")
+                        st.text(row['cinema'])
                     with col3:
                         time_str = f"{row['screening_time']}"
                         if row["end_time"]:
@@ -199,7 +199,7 @@ if not df.empty:
                     
                     if is_admin:
                         with col4:
-                            if st.button("🗑️", key=f"del_{row['id']}"):
+                            if st.button("Delete", key=f"del_{row['id']}"):
                                 conn = sqlite3.connect(DB_NAME)
                                 c = conn.cursor()
                                 c.execute("DELETE FROM screenings WHERE id = ?", (row['id'],))
@@ -207,7 +207,7 @@ if not df.empty:
                                 conn.close()
                                 st.rerun()
 
-                    # Display saved formatting/presentation tags cleanly without emojis for public viewers
+                    # Display saved formatting/presentation tags cleanly for public viewers
                     if not is_admin:
                         tag_parts = []
                         if row.get("specialty_format"):
@@ -221,7 +221,7 @@ if not df.empty:
 
                     # Owner Edit Controls for Specialty Format, Presentation & Notes
                     if is_admin:
-                        with st.expander("✏️ Edit Screening Details & Notes", expanded=False):
+                        with st.expander("Edit Screening Details & Notes", expanded=False):
                             # Specialty Format Selection
                             format_options = ["None", "16mm", "35mm", "70mm", "3D", "IMAX", "4DX", "Other"]
                             current_fmt = row.get("specialty_format", "")
@@ -235,50 +235,4 @@ if not df.empty:
                             if selected_fmt == "Other":
                                 custom_fmt = st.text_input("Specify Format", value=current_fmt if current_fmt not in format_options else "", key=f"fmt_custom_{row['id']}")
                                 final_fmt = custom_fmt
-                            elif selected_fmt != "None":
-                                final_fmt = selected_fmt
-
-                            # Presentation Selection
-                            pres_options = ["None", "Director", "Cast", "Crew", "Cinéclub", "Masterclass", "Other"]
-                            current_pres = row.get("presentation", "")
-                            
-                            base_pres = current_pres if current_pres in pres_options[1:] else ("Other" if current_pres else "None")
-                            pres_index = pres_options.index(base_pres) if base_pres in pres_options else 0
-                            
-                            selected_pres = st.selectbox("Presentation / Event Type", pres_options, index=pres_index, key=f"pres_sel_{row['id']}")
-                            
-                            final_pres = ""
-                            if selected_pres == "Other":
-                                custom_pres = st.text_input("Specify Presentation Details", value=current_pres if current_pres not in pres_options else "", key=f"pres_custom_{row['id']}")
-                                final_pres = custom_pres
-                            elif selected_pres != "None":
-                                final_pres = selected_pres
-
-                            # General Notes
-                            current_notes = row["notes"] if row["notes"] is not None else ""
-                            new_notes = st.text_input("Additional Notes", value=current_notes, key=f"notes_{row['id']}")
-
-                            # Save changes button for this item
-                            if st.button("Save Changes", key=f"save_{row['id']}"):
-                                conn = sqlite3.connect(DB_NAME)
-                                c = conn.cursor()
-                                c.execute("""
-                                    UPDATE screenings 
-                                    SET specialty_format = ?, presentation = ?, notes = ? 
-                                    WHERE id = ?
-                                """, (final_fmt, final_pres, new_notes, row['id']))
-                                conn.commit()
-                                conn.close()
-                                st.success("Updated!")
-                                st.rerun()
-
-            st.divider()
-    else:
-        st.info("No screenings match your current filters.")
-
-    # Full data table view option (Only visible to owner)
-    if is_admin:
-        with st.expander("View Raw Table & Management"):
-            st.dataframe(filtered_df, use_container_width=True)
-else:
-    st.info("No screenings saved yet. Use your Filmorama bookmarklet to add screenings.")
+                            elif selected_fmt !=
