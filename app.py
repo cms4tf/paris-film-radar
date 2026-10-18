@@ -411,15 +411,34 @@ if not df.empty:
                                 conn.close()
                                 st.rerun()
 
-                        # Owner Edit Box
+                        # Comprehensive Owner Edit Box (Editable for all fields)
                         if st.session_state.get(f"editing_{row['id']}", False):
                             with st.container():
                                 st.markdown("---")
+                                st.markdown(f"**Editing screening ID {row['id']}**")
+                                
+                                edit_title = st.text_input("Film Title", value=row['title'], key=f"edit_title_{row['id']}")
+                                edit_cinema = st.text_input("Cinema", value=row['cinema'], key=f"edit_cinema_{row['id']}")
+                                
+                                try:
+                                    default_dt = datetime.strptime(row['screening_date'], "%Y-%m-%d").date()
+                                except ValueError:
+                                    default_dt = datetime.today().date()
+                                edit_date = st.date_input("Screening Date", value=default_dt, key=f"edit_date_{row['id']}")
+                                
                                 col_t1, col_t2 = st.columns(2)
                                 with col_t1:
+                                    edit_time = st.text_input("Start Time", value=row['screening_time'], key=f"edit_time_{row['id']}")
+                                with col_t2:
+                                    edit_end_time = st.text_input("End Time", value=row.get('end_time', '') or '', key=f"edit_endtime_{row['id']}")
+
+                                edit_url = st.text_input("Booking / Ticket URL", value=row.get('url', '') or '', key=f"edit_url_{row['id']}")
+
+                                col_s1, col_s2 = st.columns(2)
+                                with col_s1:
                                     current_starred = bool(row.get("starred", 0))
                                     new_starred = st.checkbox("Star this screening (Priority)", value=current_starred, key=f"star_chk_{row['id']}")
-                                with col_t2:
+                                with col_s2:
                                     current_private = bool(row.get("private", 0))
                                     new_private = st.checkbox("Hide from public view", value=current_private, key=f"priv_chk_{row['id']}")
 
@@ -428,7 +447,6 @@ if not df.empty:
 
                                 all_fmt_options = ["16mm", "35mm", "70mm", "3D", "IMAX", "4DX"]
                                 current_fmt_str = row.get("specialty_format", "") if row.get("specialty_format") is not None else ""
-                                
                                 existing_fmt_list = [f.strip() for f in current_fmt_str.split(",") if f.strip()]
                                 default_fmt_selected = [f for f in existing_fmt_list if f in all_fmt_options]
                                 custom_fmt_initial = ", ".join([f for f in existing_fmt_list if f not in all_fmt_options])
@@ -452,18 +470,39 @@ if not df.empty:
                                 new_notes = st.text_input("Additional Notes", value=current_notes, key=f"notes_{row['id']}")
 
                                 if st.button("Save Changes", key=f"save_{row['id']}"):
-                                    conn = sqlite3.connect(DB_NAME)
-                                    c = conn.cursor()
-                                    c.execute("""
-                                        UPDATE screenings 
-                                        SET specialty_format = ?, presentation = ?, notes = ?, starred = ?, private = ?, synopsis = ? 
-                                        WHERE id = ?
-                                    """, (final_fmt, final_pres, new_notes, 1 if new_starred else 0, 1 if new_private else 0, new_synopsis, row['id']))
-                                    conn.commit()
-                                    conn.close()
-                                    st.session_state[f"editing_{row['id']}"] = False
-                                    st.success("Updated!")
-                                    st.rerun()
+                                    if not edit_title.strip() or not edit_cinema.strip():
+                                        st.error("Title and Cinema cannot be empty!")
+                                    else:
+                                        formatted_time = format_time_str(edit_time)
+                                        formatted_end_time = format_time_str(edit_end_time)
+                                        date_str = edit_date.strftime("%Y-%m-%d")
+
+                                        conn = sqlite3.connect(DB_NAME)
+                                        c = conn.cursor()
+                                        c.execute("""
+                                            UPDATE screenings 
+                                            SET title = ?, cinema = ?, screening_date = ?, screening_time = ?, end_time = ?, url = ?, specialty_format = ?, presentation = ?, notes = ?, starred = ?, private = ?, synopsis = ? 
+                                            WHERE id = ?
+                                        """, (
+                                            edit_title.strip(), 
+                                            edit_cinema.strip(), 
+                                            date_str, 
+                                            formatted_time, 
+                                            formatted_end_time, 
+                                            edit_url.strip(), 
+                                            final_fmt, 
+                                            final_pres, 
+                                            new_notes.strip(), 
+                                            1 if new_starred else 0, 
+                                            1 if new_private else 0, 
+                                            new_synopsis.strip(), 
+                                            row['id']
+                                        ))
+                                        conn.commit()
+                                        conn.close()
+                                        st.session_state[f"editing_{row['id']}"] = False
+                                        st.success("Screening successfully updated!")
+                                        st.rerun()
                                 st.markdown("---")
 
             st.divider()
