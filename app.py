@@ -262,21 +262,12 @@ if not df.empty:
                                     current_private = bool(row.get("private", 0))
                                     new_private = st.checkbox("Hide from public view", value=current_private, key=f"priv_chk_{row['id']}")
 
-                                format_options = ["None", "16mm", "35mm", "70mm", "3D", "IMAX", "4DX", "Other"]
-                                current_fmt = row.get("specialty_format", "")
-                                base_fmt = current_fmt if current_fmt in format_options[1:] else ("Other" if current_fmt else "None")
-                                fmt_index = format_options.index(base_fmt) if base_fmt in format_options else 0
-                                
-                                selected_fmt = st.selectbox("Specialty Format", format_options, index=fmt_index, key=f"fmt_sel_{row['id']}")
-                                
-                                final_fmt = ""
-                                if selected_fmt == "Other":
-                                    custom_fmt = st.text_input("Specify Format", value=current_fmt if current_fmt not in format_options else "", key=f"fmt_custom_{row['id']}")
-                                    final_fmt = custom_fmt
-                                elif selected_fmt != "None":
-                                    final_fmt = selected_fmt
+                                # Specialty Format as a standard text input
+                                current_fmt = row.get("specialty_format", "") if row.get("specialty_format") is not None else ""
+                                new_fmt = st.text_input("Specialty Format (e.g. 35mm, IMAX)", value=current_fmt, key=f"fmt_text_{row['id']}")
 
-                                pres_options = ["None", "Director", "Cast", "Crew", "Cinéclub", "Masterclass", "Open Air", "Cinéconcert", "Other"]
+                                # Presentation Selection as a multiple-choice dropdown (includes Avant-Première)
+                                pres_options = ["None", "Director", "Cast", "Crew", "Cinéclub", "Masterclass", "Open Air", "Cinéconcert", "Avant-Première", "Other"]
                                 current_pres = row.get("presentation", "")
                                 base_pres = current_pres if current_pres in pres_options[1:] else ("Other" if current_pres else "None")
                                 pres_index = pres_options.index(base_pres) if base_pres in pres_options else 0
@@ -300,7 +291,7 @@ if not df.empty:
                                         UPDATE screenings 
                                         SET specialty_format = ?, presentation = ?, notes = ?, starred = ?, private = ? 
                                         WHERE id = ?
-                                    """, (final_fmt, final_pres, new_notes, 1 if new_starred else 0, 1 if new_private else 0, row['id']))
+                                    """, (new_fmt, final_pres, new_notes, 1 if new_starred else 0, 1 if new_private else 0, row['id']))
                                     conn.commit()
                                     conn.close()
                                     st.session_state[f"editing_{row['id']}"] = False
