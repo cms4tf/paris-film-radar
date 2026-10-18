@@ -207,15 +207,15 @@ if not df.empty:
                                 conn.close()
                                 st.rerun()
 
-                    # Display saved formatting/presentation tags for public viewers
+                    # Display saved formatting/presentation tags cleanly without emojis for public viewers
                     if not is_admin:
                         tag_parts = []
                         if row.get("specialty_format"):
-                            tag_parts.append(f"🎞️ {row['specialty_format']}")
+                            tag_parts.append(row['specialty_format'])
                         if row.get("presentation"):
-                            tag_parts.append(f"🎤 {row['presentation']}")
+                            tag_parts.append(row['presentation'])
                         if row.get("notes"):
-                            tag_parts.append(f"💬 {row['notes']}")
+                            tag_parts.append(row['notes'])
                         if tag_parts:
                             st.caption(" • ".join(tag_parts))
 
@@ -226,7 +226,6 @@ if not df.empty:
                             format_options = ["None", "16mm", "35mm", "70mm", "3D", "IMAX", "4DX", "Other"]
                             current_fmt = row.get("specialty_format", "")
                             
-                            # Determine index for selectbox
                             base_fmt = current_fmt if current_fmt in format_options[1:] else ("Other" if current_fmt else "None")
                             fmt_index = format_options.index(base_fmt) if base_fmt in format_options else 0
                             
