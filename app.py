@@ -266,20 +266,14 @@ if not df.empty:
                                 current_fmt = row.get("specialty_format", "") if row.get("specialty_format") is not None else ""
                                 new_fmt = st.text_input("Specialty Format (e.g. 35mm, IMAX)", value=current_fmt, key=f"fmt_text_{row['id']}")
 
-                                # Presentation Selection as a multiple-choice dropdown (includes Avant-Première)
-                                pres_options = ["None", "Director", "Cast", "Crew", "Cinéclub", "Masterclass", "Open Air", "Cinéconcert", "Avant-Première", "Other"]
-                                current_pres = row.get("presentation", "")
-                                base_pres = current_pres if current_pres in pres_options[1:] else ("Other" if current_pres else "None")
-                                pres_index = pres_options.index(base_pres) if base_pres in pres_options else 0
+                                # Presentation Multi-select
+                                all_pres_options = ["Director", "Cast", "Crew", "Cinéclub", "Masterclass", "Open Air", "Cinéconcert", "Avant-Première"]
+                                current_pres_str = row.get("presentation", "") if row.get("presentation") is not None else ""
+                                # Parse existing stored comma-separated presentations into a list for default values
+                                default_pres_list = [p.strip() for p in current_pres_str.split(",") if p.strip() in all_pres_options]
                                 
-                                selected_pres = st.selectbox("Presentation / Event Type", pres_options, index=pres_index, key=f"pres_sel_{row['id']}")
-                                
-                                final_pres = ""
-                                if selected_pres == "Other":
-                                    custom_pres = st.text_input("Specify Presentation Details", value=current_pres if current_pres not in pres_options else "", key=f"pres_custom_{row['id']}")
-                                    final_pres = custom_pres
-                                elif selected_pres != "None":
-                                    final_pres = selected_pres
+                                selected_pres_list = st.multiselect("Presentation / Event Types", all_pres_options, default=default_pres_list, key=f"pres_multi_{row['id']}")
+                                final_pres = ", ".join(selected_pres_list)
 
                                 current_notes = row["notes"] if row["notes"] is not None else ""
                                 new_notes = st.text_input("Additional Notes", value=current_notes, key=f"notes_{row['id']}")
