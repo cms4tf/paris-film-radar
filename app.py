@@ -3,6 +3,7 @@ import streamlit as st
 from datetime import datetime
 import pandas as pd
 import random
+import time
 
 # Page Configuration
 st.set_page_config(
@@ -119,26 +120,19 @@ if "title" in query_params and "cinema" in query_params:
     st.query_params.clear()
     st.success(f"Successfully added: **{in_title}** at **{in_cinema}** ({in_time})")
 
-# --- External Film Photo Database Pool ---
-FILM_STILL_DATABASE = [
-    ("Breathless (1960)", "https://upload.wikimedia.org/wikipedia/commons/e/e3/A_bout_de_souffle_%281960%29_-_Jean-Paul_Belmondo.jpg"),
-    ("The 400 Blows (1959)", "https://upload.wikimedia.org/wikipedia/commons/d/d7/Les_Quatre_Cents_Coups_poster.jpg"),
-    ("Pierrot le Fou (1965)", "https://upload.wikimedia.org/wikipedia/en/3/33/Pierrot_le_fou_poster.jpg"),
-    ("Cléo from 5 to 7 (1962)", "https://upload.wikimedia.org/wikipedia/en/9/93/Cleo_from_5_to_7_%28Movie_Poster%29.jpg"),
-    ("M (1931)", "https://upload.wikimedia.org/wikipedia/commons/2/22/M_poster_1931.jpg")
-]
+# --- Dynamic External Photo Stream ---
+# Generates a dynamic timestamp seed so a fresh image renders reliably per session
+if "photo_seed" not in st.session_state:
+    st.session_state["photo_seed"] = int(time.time() * 1000) % 10000
 
-# Randomize once per session load
-if "current_still" not in st.session_state:
-    st.session_state["current_still"] = random.choice(FILM_STILL_DATABASE)
+film_photo_url = f"https://picsum.photos/seed/{st.session_state['photo_seed']}/1200/400"
 
 # --- Dashboard Header ---
 st.title("Paris Film Radar")
 st.write("Corey's personal curated screening schedule.")
 
-# Display random external film photo banner
-still_name, still_url = st.session_state["current_still"]
-st.image(still_url, caption=f"Archive Still: {still_name}", use_column_width=True)
+# Display working dynamic photo banner
+st.image(film_photo_url, caption="Paris Film Radar Archive Banner", use_column_width=True)
 st.divider()
 
 # --- Owner Authentication (Sidebar) ---
