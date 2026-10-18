@@ -26,7 +26,9 @@ def init_db():
 
 init_db()
 
-# Handle incoming direct parameters from bookmarklet
+is_popup = "popup" in st.query_params
+
+# Handle incoming parameters from bookmarklet
 if "title" in st.query_params:
     t = st.query_params.get("title")
     cin = st.query_params.get("cinema", "Paris Cinema")
@@ -44,10 +46,16 @@ if "title" in st.query_params:
         conn.commit()
     conn.close()
     
-    # Store return URL in session state to show a back button
     st.session_state["last_imported_url"] = u
     st.session_state["last_imported_title"] = t
     st.query_params.clear()
+
+# If opened via popup, show a nice confirmation and auto-close the window via JavaScript
+if is_popup:
+    st.success("🎬 Successfully saved to Film Radar!")
+    st.markdown("<p style='text-align: center; color: gray;'>This window will close automatically...</p>", unsafe_allow_html=True)
+    st.markdown('<script>setTimeout(function() { window.close(); }, 1500);</script>', unsafe_allow_html=True)
+    st.stop()
 
 def load_screenings():
     conn = sqlite3.connect(DB_NAME)
@@ -61,7 +69,6 @@ def load_screenings():
 st.set_page_config(page_title="Paris Film Screening Radar", page_icon="🎟️", layout="wide")
 st.title("🎬 Paris Film Screening Radar")
 
-# Show success banner and return link if an import just happened
 if "last_imported_title" in st.session_state:
     st.success(f"Successfully saved **{st.session_state['last_imported_title']}**!")
     if st.session_state.get("last_imported_url"):
