@@ -197,7 +197,7 @@ if not df.empty:
             else:
                 header_str = g_val
 
-            # Centered group header (especially for day/date)
+            # Centered group header
             st.markdown(f"<h3 style='text-align: center;'>{header_str}</h3>", unsafe_allow_html=True)
             group_screenings = filtered_df[filtered_df[g_col] == g_val].copy()
 
@@ -228,14 +228,13 @@ if not df.empty:
                     continue
 
                 with st.container():
-                    # Reduced column width for the title column [3, 2, 2]
                     col1, col2, col3 = st.columns([3, 2, 2])
 
                     raw_title = f"★ {row['title']}" if is_starred_item else row['title']
                     if is_private_item and is_admin:
                         raw_title = f"[PRIVATE] {raw_title}"
 
-                    # Title & Link Column
+                    # Title & Bundled Tags Column
                     with col1:
                         if is_starred_item:
                             if row.get("url"):
@@ -247,6 +246,24 @@ if not df.empty:
                                 st.markdown(f"**[{raw_title}]({row['url']})**")
                             else:
                                 st.markdown(f"**{raw_title}**")
+                        
+                        # Tags & Notes bundled directly under title
+                        tag_parts = []
+                        if is_starred_item:
+                            tag_parts.append("Starred / Priority Selection")
+                        if row.get("specialty_format"):
+                            tag_parts.append(row['specialty_format'])
+                        if row.get("presentation"):
+                            tag_parts.append(row['presentation'])
+                        if row.get("notes"):
+                            tag_parts.append(row['notes'])
+                        
+                        if tag_parts:
+                            full_tag_str = " • ".join(tag_parts)
+                            if is_starred_item:
+                                st.markdown(f'<span class="starred-red" style="font-size: 0.85em;">{full_tag_str}</span>', unsafe_allow_html=True)
+                            else:
+                                st.caption(full_tag_str)
 
                     # Cinema Column
                     with col2:
@@ -266,24 +283,6 @@ if not df.empty:
                             st.markdown(f'<span class="starred-red">{time_val}</span>', unsafe_allow_html=True)
                         else:
                             st.write(time_val)
-                    
-                    # Tags & Notes Row
-                    tag_parts = []
-                    if is_starred_item:
-                        tag_parts.append("Starred / Priority Selection")
-                    if row.get("specialty_format"):
-                        tag_parts.append(row['specialty_format'])
-                    if row.get("presentation"):
-                        tag_parts.append(row['presentation'])
-                    if row.get("notes"):
-                        tag_parts.append(row['notes'])
-                    
-                    if tag_parts:
-                        full_tag_str = " • ".join(tag_parts)
-                        if is_starred_item:
-                            st.markdown(f'<span class="starred-red">{full_tag_str}</span>', unsafe_allow_html=True)
-                        else:
-                            st.caption(full_tag_str)
 
                     # Owner Actions (Edit / Delete)
                     if is_admin:
