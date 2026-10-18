@@ -26,6 +26,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 DB_NAME = "screenings.db"
+OWNER_PASSWORD = "GODARD68"
 
 def format_time_str(t_str):
     """Safely formats screening times to HH:MM format (e.g., 21-30 or 21h30 -> 21:30)"""
@@ -79,44 +80,49 @@ def init_db():
 # Initialize database on load
 init_db()
 
-# --- Auto-save incoming bookmarklet data ---
+# --- Password-Protected Bookmarklet Data Ingestion ---
 query_params = st.query_params
 if "title" in query_params and "cinema" in query_params:
-    in_title = query_params.get("title")
-    in_cinema = query_params.get("cinema")
-    in_date = query_params.get("date", datetime.today().strftime("%Y-%m-%d"))
-    in_time = format_time_str(query_params.get("time", "20:00"))
-    in_end_time = format_time_str(query_params.get("end_time", ""))
-    in_poster = query_params.get("poster", "")
-    in_url = query_params.get("url", "")
+    provided_key = query_params.get("key", "")
+    if provided_key == OWNER_PASSWORD:
+        in_title = query_params.get("title")
+        in_cinema = query_params.get("cinema")
+        in_date = query_params.get("date", datetime.today().strftime("%Y-%m-%d"))
+        in_time = format_time_str(query_params.get("time", "20:00"))
+        in_end_time = format_time_str(query_params.get("end_time", ""))
+        in_poster = query_params.get("poster", "")
+        in_url = query_params.get("url", "")
 
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute("""
-        INSERT INTO screenings (title, cinema, screening_date, screening_time, end_time, format, status, url, notes, poster_url, specialty_format, presentation, starred, private, synopsis) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        in_title, 
-        in_cinema, 
-        in_date, 
-        in_time, 
-        in_end_time, 
-        "VOST", 
-        "Scheduled", 
-        in_url, 
-        "",
-        in_poster,
-        "",
-        "",
-        0,
-        0,
-        ""
-    ))
-    conn.commit()
-    conn.close()
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("""
+            INSERT INTO screenings (title, cinema, screening_date, screening_time, end_time, format, status, url, notes, poster_url, specialty_format, presentation, starred, private, synopsis) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            in_title, 
+            in_cinema, 
+            in_date, 
+            in_time, 
+            in_end_time, 
+            "VOST", 
+            "Scheduled", 
+            in_url, 
+            "",
+            in_poster,
+            "",
+            "",
+            0,
+            0,
+            ""
+        ))
+        conn.commit()
+        conn.close()
 
-    st.query_params.clear()
-    st.success(f"Successfully added: **{in_title}** at **{in_cinema}** ({in_time})")
+        st.query_params.clear()
+        st.success(f"Successfully added: **{in_title}** at **{in_cinema}** ({in_time})")
+    else:
+        st.query_params.clear()
+        st.error("Unauthorized: Valid owner key required to add screenings via URL.")
 
 # --- Dashboard Header ---
 st.title("Paris Film Radar")
@@ -127,12 +133,71 @@ st.divider()
 st.sidebar.divider()
 st.sidebar.header("Owner Mode")
 
-owner_password = "GODARD68"
 entered_password = st.sidebar.text_input("Enter password to edit", type="password")
-is_admin = (entered_password == owner_password)
+is_admin = (entered_password == OWNER_PASSWORD)
 
 if is_admin:
     st.sidebar.success("Owner mode unlocked.")
+    
+    # --- Owner-Only Manual Screening Creation Form ---
+    with st.sidebar.expander("➕ Manually Add Screening"):
+        with st.form("manual_add_form", clear_on_submit=True):
+            add_title = st.text_input("Film Title*")
+            add_cinema = st.text_input("Cinema Name*")
+            add_date = st.date_input("Screening Date", datetime.today())
+            add_time = st.text_input("Start Time (e.g., 20:30)", "20:00")
+            add_end_time = st.text_input("End Time (optional)", "")
+            add_url = st.text_input("Booking / Ticket URL", "")
+            add_synopsis = st.text_area("Synopsis", "")
+            
+            all_fmt_options = ["16mm", "35mm", "70mm", "3D", "IMAX", "4DX"]
+            add_fmts = st.multiselect("Specialty Formats", all_fmt_options)
+            
+            all_pres_options = ["Director", "Cast", "Crew", "Cinéclub", "Masterclass", "Open Air", "Cinéconcert", "Avant-Première"]
+            add_pres = st.multiselect("Presentation / Event Types", all_pres_options)
+            
+            add_notes = st.text_input("Notes", "")
+            add_starred = st.checkbox("Star this screening (Priority)")
+            add_private = st.checkbox("Hide from public view")
+            
+            submit_add = st.form_submit_button("Save Screening")
+            
+            if submit_add:
+                if not add_title.strip() or not add_cinema.strip():
+                    st.error("Title and Cinema are required!")
+                else:
+                    formatted_time = format_time_str(add_time)
+                    formatted_end_time = format_time_str(add_end_time)
+                    fmt_str = ", ".join(add_fmts)
+                    pres_str = ", ".join(add_pres)
+                    date_str = add_date.strftime("%Y-%m-%d")
+
+                    conn = sqlite3.connect(DB_NAME)
+                    c = conn.cursor()
+                    c.execute("""
+                        INSERT INTO screenings (title, cinema, screening_date, screening_time, end_time, format, status, url, notes, poster_url, specialty_format, presentation, starred, private, synopsis) 
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        add_title.strip(), 
+                        add_cinema.strip(), 
+                        date_str, 
+                        formatted_time, 
+                        formatted_end_time, 
+                        "VOST", 
+                        "Scheduled", 
+                        add_url.strip(), 
+                        add_notes.strip(),
+                        "",
+                        fmt_str,
+                        pres_str,
+                        1 if add_starred else 0,
+                        1 if add_private else 0,
+                        add_synopsis.strip()
+                    ))
+                    conn.commit()
+                    conn.close()
+                    st.success(f"Added **{add_title}**!")
+                    st.rerun()
 
 # --- Fetch Data ---
 conn = sqlite3.connect(DB_NAME)
@@ -228,9 +293,7 @@ if not df.empty:
                     continue
 
                 with st.container():
-                    # Tailor columns based on grouping type
                     if primary_group == "Film":
-                        # When grouped by Film, title is already the header. Show Cinema, Date/Time, and Link/Notes.
                         col1, col2, col3 = st.columns([3, 3, 2])
                         
                         # Cinema
@@ -274,7 +337,6 @@ if not df.empty:
                                 st.markdown(action_str)
 
                     else:
-                        # Standard Layout for Date or Cinema grouping [Title, Cinema, Time]
                         col1, col2, col3 = st.columns([3, 2, 2])
 
                         raw_title = f"★ {row['title']}" if is_starred_item else row['title']
@@ -294,7 +356,6 @@ if not df.empty:
                                 else:
                                     st.markdown(f"**{raw_title}**")
                             
-                            # Tags & Notes bundled directly under title
                             tag_parts = []
                             if is_starred_item:
                                 tag_parts.append("Starred / Priority Selection")
@@ -413,4 +474,4 @@ if not df.empty:
         with st.expander("View Raw Table & Management"):
             st.dataframe(filtered_df, use_container_width=True)
 else:
-    st.info("No screenings saved yet. Use your Filmorama bookmarklet to add screenings.")
+    st.info("No screenings saved yet. Use your Filmorama bookmarklet or sidebar to add screenings.")
