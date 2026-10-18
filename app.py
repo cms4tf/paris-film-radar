@@ -10,6 +10,17 @@ st.set_page_config(
     layout="wide"
 )
 
+# Global style override for red starred links
+st.markdown("""
+    <style>
+    .starred-title, .starred-title a {
+        color: #dc2626 !important;
+        text-decoration: underline;
+        font-weight: bold;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
 DB_NAME = "screenings.db"
 
 def init_db():
@@ -213,12 +224,17 @@ if not df.empty:
                         if is_private_item and is_admin:
                             raw_title = f"[PRIVATE] {raw_title}"
 
-                        title_text = f"**[{raw_title}]({row['url']})**" if row["url"] else f"**{raw_title}**"
-                        
                         if is_starred_item:
-                            st.markdown(f":red[{title_text}]")
+                            if row["url"]:
+                                html_title = f'<span class="starred-title"><a href="{row["url"]}" target="_blank">{raw_title}</a></span>'
+                            else:
+                                html_title = f'<span class="starred-title">{raw_title}</span>'
+                            st.markdown(html_title, unsafe_allow_html=True)
                         else:
-                            st.markdown(title_text)
+                            if row["url"]:
+                                st.markdown(f"**[{raw_title}]({row['url']})**")
+                            else:
+                                st.markdown(f"**{raw_title}**")
 
                     with col2:
                         cinema_text = row['cinema']
