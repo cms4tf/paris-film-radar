@@ -128,11 +128,7 @@ if not df.empty:
     st.sidebar.divider()
     st.sidebar.header("🔒 Owner Mode")
     
-    try:
-        owner_password = st.secrets.get("ADMIN_PASSWORD", "secretparisscreening")
-    except Exception:
-        owner_password = "secretparisscreening"
-
+    owner_password = "GODARD68"
     entered_password = st.sidebar.text_input("Enter password to edit", type="password")
     is_admin = (entered_password == owner_password)
 
