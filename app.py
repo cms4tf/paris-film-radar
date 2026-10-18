@@ -26,7 +26,7 @@ def init_db():
 
 init_db()
 
-# Handle incoming bookmarklet data via URL parameters
+# Handle incoming direct parameters from bookmarklet
 if "title" in st.query_params:
     t = st.query_params.get("title")
     cin = st.query_params.get("cinema", "Paris Cinema")
@@ -40,10 +40,13 @@ if "title" in st.query_params:
     c.execute("SELECT id FROM screenings WHERE title = ? AND cinema = ? AND screening_date = ? AND screening_time = ?", (t, cin, d, tm))
     if not c.fetchone():
         c.execute("INSERT INTO screenings (title, cinema, screening_date, screening_time, end_time, format, status, url, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                  (t, cin, d, tm, et, "VOST", "Scheduled", u, "1-Click Auto Import"))
+                  (t, cin, d, tm, et, "VOST", "Scheduled", u, "Bookmarklet Import"))
         conn.commit()
     conn.close()
-    # Clear query params so refreshing doesn't re-trigger
+    
+    # Store return URL in session state to show a back button
+    st.session_state["last_imported_url"] = u
+    st.session_state["last_imported_title"] = t
     st.query_params.clear()
 
 def load_screenings():
@@ -57,6 +60,15 @@ def load_screenings():
 
 st.set_page_config(page_title="Paris Film Screening Radar", page_icon="🎟️", layout="wide")
 st.title("🎬 Paris Film Screening Radar")
+
+# Show success banner and return link if an import just happened
+if "last_imported_title" in st.session_state:
+    st.success(f"Successfully saved **{st.session_state['last_imported_title']}**!")
+    if st.session_state.get("last_imported_url"):
+        st.markdown(f"👉 [Click here to return to your cinema page]({st.session_state['last_imported_url']})")
+    if st.button("Clear Notification"):
+        del st.session_state["last_imported_title"]
+        st.rerun()
 
 if st.button("🔄 Refresh"):
     st.rerun()
@@ -116,17 +128,17 @@ else:
             st.subheader(f"{header_label}")
             for _, row in group.iterrows():
                 c1, c2, c3, c4 = st.columns([3, 2, 2, 1])
-                with c1: st.markdown(f"**{row["title"]}**")
+                with c1: st.markdown(f"**{row['title']}**")
                 with c2: 
-                    end_val = row.get("end_string", "") or row.get("end_time", "")
+                    end_val = row.get("end_time", "")
                     end_str = f" - {end_val}" if pd.notna(end_val) and end_val else ""
-                    info_text = f"📍 {row["cinema"]} | 🕒 {row["screening_date"]} {row["screening_time"]}{end_str}" if sort_by == "Date" else f"📍 {row["cinema"]} | 🕒 {row["screening_time"]}{end_str}"
+                    info_text = f"📍 {row['cinema']} | 🕒 {row['screening_time']}{end_str}"
                     st.text(info_text)
-                with c3: st.markdown(f"🔵 *{row.get("status", "Scheduled")}*")
+                with c3: st.markdown(f"🔵 *{row.get('status', 'Scheduled')}*")
                 with c4:
-                    if st.button("Delete", key=f"del_{row["id"]}"):
+                    if st.button("Delete", key=f"del_{row['id']}"):
                         conn = sqlite3.connect(DB_NAME)
-                        conn.execute("DELETE FROM screenings WHERE id = ?", (row["id"],))
+                        conn.execute("DELETE FROM screenings WHERE id = ?", (row['id'],))
                         conn.commit()
                         conn.close()
                         st.rerun()
@@ -137,16 +149,16 @@ else:
             st.subheader(f"{film_title}")
             for _, row in group.iterrows():
                 c1, c2, c3, c4 = st.columns([3, 2, 2, 1])
-                with c1: st.markdown(f"📍 **{row["cinema"]}**")
+                with c1: st.markdown(f"📍 **{row['cinema']}**")
                 with c2: 
-                    end_val = row.get("end_string", "") or row.get("end_time", "")
+                    end_val = row.get("end_time", "")
                     end_str = f" - {end_val}" if pd.notna(end_val) and end_val else ""
-                    st.text(f"📅 {row["screening_date"]} | 🕒 {row["screening_time"]}{end_str}")
-                with c3: st.markdown(f"🔵 *{row.get("status", "Scheduled")}*")
+                    st.text(f"📅 {row['screening_date']} | 🕒 {row['screening_time']}{end_str}")
+                with c3: st.markdown(f"🔵 *{row.get('status', 'Scheduled')}*")
                 with c4:
-                    if st.button("Delete", key=f"del_{row["id"]}"):
+                    if st.button("Delete", key=f"del_{row['id']}"):
                         conn = sqlite3.connect(DB_NAME)
-                        conn.execute("DELETE FROM screenings WHERE id = ?", (row["id"],))
+                        conn.execute("DELETE FROM screenings WHERE id = ?", (row['id'],))
                         conn.commit()
                         conn.close()
                         st.rerun()
