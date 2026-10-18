@@ -10,15 +10,11 @@ st.set_page_config(
     layout="wide"
 )
 
-# Custom CSS for Starred Screening Highlight Cards
+# Custom CSS for Starred Screening Red Text Highlighting
 st.markdown("""
     <style>
-    .starred-screening-card {
-        border: 2px solid #3b82f6;
-        background-color: rgba(59, 130, 246, 0.04);
-        padding: 12px 16px;
-        border-radius: 8px;
-        margin-bottom: 12px;
+    .starred-screening-text * {
+        color: #dc2626 !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -217,12 +213,11 @@ if not df.empty:
                         st.divider()
                     continue
 
-                # Apply the styled container if starred, otherwise standard container
-                card_class = "starred-screening-card" if is_starred_item else ""
-                
+                wrapper_class = "starred-screening-text" if is_starred_item else ""
+
                 with st.container():
-                    if card_class:
-                        st.markdown(f'<div class="{card_class}">', unsafe_allow_html=True)
+                    if wrapper_class:
+                        st.markdown(f'<div class="{wrapper_class}">', unsafe_allow_html=True)
 
                     # Main screening info row
                     col1, col2, col3 = st.columns([4, 2, 2])
@@ -257,6 +252,9 @@ if not df.empty:
                     
                     if tag_parts:
                         st.caption(" • ".join(tag_parts))
+
+                    if wrapper_class:
+                        st.markdown('</div>', unsafe_allow_html=True)
 
                     # Owner Action Row right-justified with tight button placement
                     if is_admin:
@@ -336,9 +334,6 @@ if not df.empty:
                                     st.success("Updated!")
                                     st.rerun()
                                 st.markdown("---")
-
-                    if card_class:
-                        st.markdown('</div>', unsafe_allow_html=True)
 
             st.divider()
     else:
