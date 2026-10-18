@@ -179,7 +179,7 @@ if not df.empty:
 
             for _, row in group_screenings.iterrows():
                 with st.container():
-                    # Main screening info row with flexible variable widths
+                    # Main screening info row
                     col1, col2, col3 = st.columns([4, 2, 2])
 
                     with col1:
@@ -207,18 +207,18 @@ if not df.empty:
                     if tag_parts:
                         st.caption(" • ".join(tag_parts))
 
-                    # Separate Owner Action Row for Edit (Pencil) and Delete (Trashcan)
+                    # Owner Action Row with comfortable, fixed-width buttons
                     if is_admin:
-                        btn_col1, btn_col2, btn_col3 = st.columns([0.5, 0.5, 9])
-                        with btn_col1:
+                        action_col1, action_col2, action_col3 = st.columns([1, 1, 4])
+                        with action_col1:
                             edit_key = f"editing_{row['id']}"
                             if edit_key not in st.session_state:
                                 st.session_state[edit_key] = False
                             
-                            if st.button("✏️", key=f"btn_edit_{row['id']}"):
+                            if st.button("Edit", key=f"btn_edit_{row['id']}"):
                                 st.session_state[edit_key] = not st.session_state[edit_key]
-                        with btn_col2:
-                            if st.button("🗑️", key=f"del_{row['id']}"):
+                        with action_col2:
+                            if st.button("Delete", key=f"del_{row['id']}"):
                                 conn = sqlite3.connect(DB_NAME)
                                 c = conn.cursor()
                                 c.execute("DELETE FROM screenings WHERE id = ?", (row['id'],))
@@ -226,7 +226,7 @@ if not df.empty:
                                 conn.close()
                                 st.rerun()
 
-                        # Owner Edit Form (Toggled by the pencil button)
+                        # Owner Edit Form (Toggled by the Edit button)
                         if st.session_state.get(f"editing_{row['id']}", False):
                             with st.container():
                                 st.markdown("---")
