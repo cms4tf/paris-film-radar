@@ -228,61 +228,108 @@ if not df.empty:
                     continue
 
                 with st.container():
-                    col1, col2, col3 = st.columns([3, 2, 2])
-
-                    raw_title = f"★ {row['title']}" if is_starred_item else row['title']
-                    if is_private_item and is_admin:
-                        raw_title = f"[PRIVATE] {raw_title}"
-
-                    # Title & Bundled Tags Column
-                    with col1:
-                        if is_starred_item:
-                            if row.get("url"):
-                                st.markdown(f'<span class="starred-red"><a href="{row["url"]}" target="_blank">{raw_title}</a></span>', unsafe_allow_html=True)
-                            else:
-                                st.markdown(f'<span class="starred-red">{raw_title}</span>', unsafe_allow_html=True)
-                        else:
-                            if row.get("url"):
-                                st.markdown(f"**[{raw_title}]({row['url']})**")
-                            else:
-                                st.markdown(f"**{raw_title}**")
+                    # Tailor columns based on grouping type
+                    if primary_group == "Film":
+                        # When grouped by Film, title is already the header. Show Cinema, Date/Time, and Link/Notes.
+                        col1, col2, col3 = st.columns([3, 3, 2])
                         
-                        # Tags & Notes bundled directly under title
-                        tag_parts = []
-                        if is_starred_item:
-                            tag_parts.append("Starred / Priority Selection")
-                        if row.get("specialty_format"):
-                            tag_parts.append(row['specialty_format'])
-                        if row.get("presentation"):
-                            tag_parts.append(row['presentation'])
-                        if row.get("notes"):
-                            tag_parts.append(row['notes'])
-                        
-                        if tag_parts:
-                            full_tag_str = " • ".join(tag_parts)
+                        # Cinema
+                        with col1:
+                            cinema_val = str(row['cinema']) if row['cinema'] else ''
+                            star_prefix = "★ " if is_starred_item else ""
+                            display_cinema = f"{star_prefix}{cinema_val}"
                             if is_starred_item:
-                                st.markdown(f'<span class="starred-red" style="font-size: 0.85em;">{full_tag_str}</span>', unsafe_allow_html=True)
+                                st.markdown(f'<span class="starred-red">{display_cinema}</span>', unsafe_allow_html=True)
                             else:
-                                st.caption(full_tag_str)
+                                st.write(display_cinema)
 
-                    # Cinema Column
-                    with col2:
-                        cinema_val = str(row['cinema']) if row['cinema'] else ''
-                        if is_starred_item:
-                            st.markdown(f'<span class="starred-red">{cinema_val}</span>', unsafe_allow_html=True)
-                        else:
-                            st.write(cinema_val)
+                        # Date & Time
+                        with col2:
+                            dt_val = f"{row['screening_date']} @ {format_time_str(row['screening_time'])}"
+                            if row.get("end_time"):
+                                dt_val += f" - {format_time_str(row['end_time'])}"
+                            if is_starred_item:
+                                st.markdown(f'<span class="starred-red">{dt_val}</span>', unsafe_allow_html=True)
+                            else:
+                                st.write(dt_val)
 
-                    # Time Column
-                    with col3:
-                        time_val = format_time_str(row['screening_time'])
-                        if row.get("end_time"):
-                            time_val += f" - {format_time_str(row['end_time'])}"
-                        
-                        if is_starred_item:
-                            st.markdown(f'<span class="starred-red">{time_val}</span>', unsafe_allow_html=True)
-                        else:
-                            st.write(time_val)
+                        # Link & Tags
+                        with col3:
+                            action_parts = []
+                            if row.get("url"):
+                                action_parts.append(f"[Tickets ↗]({row['url']})")
+                            if is_starred_item:
+                                action_parts.append("Starred")
+                            if row.get("specialty_format"):
+                                action_parts.append(row['specialty_format'])
+                            if row.get("presentation"):
+                                action_parts.append(row['presentation'])
+                            if row.get("notes"):
+                                action_parts.append(row['notes'])
+                            
+                            action_str = " • ".join(action_parts)
+                            if is_starred_item:
+                                st.markdown(f'<span class="starred-red">{action_str}</span>', unsafe_allow_html=True)
+                            else:
+                                st.markdown(action_str)
+
+                    else:
+                        # Standard Layout for Date or Cinema grouping [Title, Cinema, Time]
+                        col1, col2, col3 = st.columns([3, 2, 2])
+
+                        raw_title = f"★ {row['title']}" if is_starred_item else row['title']
+                        if is_private_item and is_admin:
+                            raw_title = f"[PRIVATE] {raw_title}"
+
+                        # Title & Bundled Tags Column
+                        with col1:
+                            if is_starred_item:
+                                if row.get("url"):
+                                    st.markdown(f'<span class="starred-red"><a href="{row["url"]}" target="_blank">{raw_title}</a></span>', unsafe_allow_html=True)
+                                else:
+                                    st.markdown(f'<span class="starred-red">{raw_title}</span>', unsafe_allow_html=True)
+                            else:
+                                if row.get("url"):
+                                    st.markdown(f"**[{raw_title}]({row['url']})**")
+                                else:
+                                    st.markdown(f"**{raw_title}**")
+                            
+                            # Tags & Notes bundled directly under title
+                            tag_parts = []
+                            if is_starred_item:
+                                tag_parts.append("Starred / Priority Selection")
+                            if row.get("specialty_format"):
+                                tag_parts.append(row['specialty_format'])
+                            if row.get("presentation"):
+                                tag_parts.append(row['presentation'])
+                            if row.get("notes"):
+                                tag_parts.append(row['notes'])
+                            
+                            if tag_parts:
+                                full_tag_str = " • ".join(tag_parts)
+                                if is_starred_item:
+                                    st.markdown(f'<span class="starred-red" style="font-size: 0.85em;">{full_tag_str}</span>', unsafe_allow_html=True)
+                                else:
+                                    st.caption(full_tag_str)
+
+                        # Cinema Column
+                        with col2:
+                            cinema_val = str(row['cinema']) if row['cinema'] else ''
+                            if is_starred_item:
+                                st.markdown(f'<span class="starred-red">{cinema_val}</span>', unsafe_allow_html=True)
+                            else:
+                                st.write(cinema_val)
+
+                        # Time Column
+                        with col3:
+                            time_val = format_time_str(row['screening_time'])
+                            if row.get("end_time"):
+                                time_val += f" - {format_time_str(row['end_time'])}"
+                            
+                            if is_starred_item:
+                                st.markdown(f'<span class="starred-red">{time_val}</span>', unsafe_allow_html=True)
+                            else:
+                                st.write(time_val)
 
                     # Owner Actions (Edit / Delete)
                     if is_admin:
