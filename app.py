@@ -69,33 +69,21 @@ def format_time_str(t_str):
   return clean_t
 
 
-# --- Load Data from JSONBin (Cached/Session Managed) ---
-def fetch_from_cloud():
+# --- Load & Save Data from JSONBin ---
+@st.cache_data(ttl=0)
+def load_data():
   try:
     url = f"https://api.jsonbin.io/v3/b/{BIN_ID}/latest"
-    response = requests.get(url, headers=HEADERS, timeout=5)
+    response = requests.get(url, headers=HEADERS)
     if response.status_code == 200:
       record = response.json().get("record", [])
       if not record or not isinstance(record, list):
         return pd.DataFrame(columns=DEFAULT_COLUMNS)
       df_loaded = pd.DataFrame(record)
-
+      # Ensure all default columns exist
       for col in DEFAULT_COLUMNS:
         if col not in df_loaded.columns:
           df_loaded[col] = ""
-
-      # Filter out blank placeholder rows
-      df_loaded = df_loaded[df_loaded["title"].astype(str).str.strip() != ""]
-
-      if "id" not in df_loaded.columns or df_loaded["id"].isnull().all():
-        df_loaded["id"] = range(1, len(df_loaded) + 1)
-      else:
-        df_loaded["id"] = (
-            pd.to_numeric(df_loaded["id"], errors="coerce")
-            .fillna(0)
-            .astype(int)
-        )
-
       return df_loaded
     else:
       return pd.DataFrame(columns=DEFAULT_COLUMNS)
@@ -103,45 +91,13 @@ def fetch_from_cloud():
     return pd.DataFrame(columns=DEFAULT_COLUMNS)
 
 
-# Initialize Session State for DataPersistence
-if "df_state" not in st.session_state:
-  st.session_state.df_state = fetch_from_cloud()
-
-
 def save_to_cloud(df):
   try:
-    if not df.empty:
-      df_to_save = df[df["title"].astype(str).str.strip() != ""]
-    else:
-      df_to_save = df
-
-    if df_to_save.empty:
-      data_list = [{
-          "id": 999999,
-          "title": "",
-          "cinema": "",
-          "screening_date": "",
-          "screening_time": "",
-          "end_time": "",
-          "format": "",
-          "status": "",
-          "url": "",
-          "notes": "",
-          "poster_url": "",
-          "specialty_format": "",
-          "presentation": "",
-          "starred": 0,
-          "private": 0,
-          "synopsis": "",
-      }]
-    else:
-      data_list = df_to_save.to_dict(orient="records")
-
+    data_list = df.to_dict(orient="records")
     url = f"https://api.jsonbin.io/v3/b/{BIN_ID}"
-    response = requests.put(url, json=data_list, headers=HEADERS, timeout=5)
+    response = requests.put(url, json=data_list, headers=HEADERS)
     if response.status_code == 200:
-      # Update session state directly to bypass JSONBin edge-caching latency
-      st.session_state.df_state = df.copy()
+      st.cache_data.clear()
       return True
     else:
       st.error(f"Cloud sync error: {response.text}")
@@ -151,7 +107,14 @@ def save_to_cloud(df):
     return False
 
 
-df = st.session_state.df_state
+# Load current dataframe
+df = load_data()
+
+# Ensure ID column exists and handle auto-incrementing equivalent
+if "id" not in df.columns or df["id"].dropna().empty:
+  df["id"] = range(1, len(df) + 1)
+else:
+  df["id"] = pd.to_numeric(df["id"], errors="coerce").fillna(0).astype(int)
 
 # --- Password-Protected Bookmarklet Data Ingestion ---
 query_params = st.query_params
@@ -168,8 +131,7 @@ if "title" in query_params and "cinema" in query_params:
     in_poster = query_params.get("poster", "")
     in_url = query_params.get("url", "")
 
-    # Use timestamp-based unique ID to prevent any collision
-    new_id = int(datetime.now().timestamp() * 1000)
+    new_id = int(df["id"].max() + 1) if not df.empty else 1
 
     new_row = {
         "id": new_id,
@@ -217,11 +179,6 @@ is_admin = entered_password == OWNER_PASSWORD
 if is_admin:
   st.sidebar.success("Owner mode unlocked.")
 
-  # Refresh cloud button just in case
-  if st.sidebar.button("🔄 Force Refresh from Cloud"):
-    st.session_state.df_state = fetch_from_cloud()
-    st.rerun()
-
   # --- Owner-Only Manual Screening Creation Form ---
   with st.sidebar.expander("➕ Manually Add Screening"):
     with st.form("manual_add_form", clear_on_submit=True):
@@ -265,9 +222,7 @@ if is_admin:
           fmt_str = ", ".join(add_fmts)
           pres_str = ", ".join(add_pres)
           date_str = add_date.strftime("%Y-%m-%d")
-
-          # Unique timestamp-based ID
-          new_id = int(datetime.now().timestamp() * 1000)
+          new_id = int(df["id"].max() + 1) if not df.empty else 1
 
           new_row = {
               "id": new_id,
@@ -659,9 +614,8 @@ if not df.empty:
                 default_pres_list = [
                     p.strip()
                     for p in str(current_pres_str).split(",")
-                    if p.sub("__missing__")
                     if p.strip() in all_pres_options
-                ] if isinstance(current_pres_str, str) else []
+                ]
 
                 selected_pres_list = st.multiselect(
                     "Presentation / Event Types",
@@ -688,7 +642,7 @@ if not df.empty:
                     formatted_end_time = format_time_str(edit_end_time)
                     date_str = edit_date.strftime("%Y-%m-%d")
 
-                    # Update dataframe row in session state
+                    # Update dataframe row
                     idx = df[df["id"] == row["id"]].index
                     if not idx.empty:
                       df.loc[idx, "title"] = edit_title.strip()
