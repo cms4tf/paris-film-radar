@@ -80,10 +80,25 @@ def load_data():
       if not record or not isinstance(record, list):
         return pd.DataFrame(columns=DEFAULT_COLUMNS)
       df_loaded = pd.DataFrame(record)
+
       # Ensure all default columns exist
       for col in DEFAULT_COLUMNS:
         if col not in df_loaded.columns:
           df_loaded[col] = ""
+
+      # Filter out any blank placeholder rows created previously
+      df_loaded = df_loaded[df_loaded["title"].astype(str).str.strip() != ""]
+
+      # Ensure unique integer IDs
+      if "id" not in df_loaded.columns or df_loaded["id"].isnull().all():
+        df_loaded["id"] = range(1, len(df_loaded) + 1)
+      else:
+        df_loaded["id"] = (
+            pd.to_numeric(df_loaded["id"], errors="coerce")
+            .fillna(0)
+            .astype(int)
+        )
+
       return df_loaded
     else:
       return pd.DataFrame(columns=DEFAULT_COLUMNS)
@@ -93,7 +108,33 @@ def load_data():
 
 def save_to_cloud(df):
   try:
-    data_list = df.to_dict(orient="records")
+    # Filter out empty placeholder rows before saving
+    if not df.empty:
+      df = df[df["title"].astype(str).str.strip() != ""]
+
+    # JSONBin rejects empty arrays, so if empty, store a dummy placeholder record
+    if df.empty:
+      data_list = [{
+          "id": 999999,
+          "title": "",
+          "cinema": "",
+          "screening_date": "",
+          "screening_time": "",
+          "end_time": "",
+          "format": "",
+          "status": "",
+          "url": "",
+          "notes": "",
+          "poster_url": "",
+          "specialty_format": "",
+          "presentation": "",
+          "starred": 0,
+          "private": 0,
+          "synopsis": "",
+      }]
+    else:
+      data_list = df.to_dict(orient="records")
+
     url = f"https://api.jsonbin.io/v3/b/{BIN_ID}"
     response = requests.put(url, json=data_list, headers=HEADERS)
     if response.status_code == 200:
@@ -110,12 +151,6 @@ def save_to_cloud(df):
 # Load current dataframe
 df = load_data()
 
-# Ensure ID column exists and handle auto-incrementing equivalent
-if "id" not in df.columns or df["id"].dropna().empty:
-  df["id"] = range(1, len(df) + 1)
-else:
-  df["id"] = pd.to_numeric(df["id"], errors="coerce").fillna(0).astype(int)
-
 # --- Password-Protected Bookmarklet Data Ingestion ---
 query_params = st.query_params
 if "title" in query_params and "cinema" in query_params:
@@ -131,7 +166,7 @@ if "title" in query_params and "cinema" in query_params:
     in_poster = query_params.get("poster", "")
     in_url = query_params.get("url", "")
 
-    new_id = int(df["id"].max() + 1) if not df.empty else 1
+    new_id = int(df["id"].max() + 1) if not df.empty and df["id"].max() > 0 else 1
 
     new_row = {
         "id": new_id,
@@ -222,7 +257,11 @@ if is_admin:
           fmt_str = ", ".join(add_fmts)
           pres_str = ", ".join(add_pres)
           date_str = add_date.strftime("%Y-%m-%d")
-          new_id = int(df["id"].max() + 1) if not df.empty else 1
+          new_id = (
+              int(df["id"].max() + 1)
+              if not df.empty and df["id"].max() > 0
+              else 1
+          )
 
           new_row = {
               "id": new_id,
