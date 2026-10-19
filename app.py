@@ -1,7 +1,7 @@
-import sqlite3
 import streamlit as st
 from datetime import datetime
 import pandas as pd
+from streamlit_gsheets import GSheetsConnection
 
 # Page Configuration
 st.set_page_config(
@@ -25,11 +25,39 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-DB_NAME = "screenings.db"
 OWNER_PASSWORD = "GODARD68"
 
+# Connect to Google Sheets
+conn = st.connection("gsheets", type=GSheetsConnection)
+
+def get_data():
+    """Reads all screenings from Google Sheets safely."""
+    try:
+        df = conn.read(ttl=0)
+        if df is None or df.empty:
+            return pd.DataFrame(columns=[
+                "id", "title", "cinema", "screening_date", "screening_time", 
+                "end_time", "format", "status", "url", "notes", "poster_url", 
+                "specialty_format", "presentation", "starred", "private", "synopsis"
+            ])
+        # Clean column types
+        df["id"] = pd.to_numeric(df["id"], errors="coerce").fillna(0).astype(int)
+        df["starred"] = pd.to_numeric(df["starred"], errors="coerce").fillna(0).astype(int)
+        df["private"] = pd.to_numeric(df["private"], errors="coerce").fillna(0).astype(int)
+        for c in df.columns:
+            if c not in ["id", "starred", "private"]:
+                df[c] = df[c].fillna("").astype(str)
+        return df
+    except Exception as e:
+        st.error(f"Error loading data from Google Sheets: {e}")
+        return pd.DataFrame()
+
+def save_data(df):
+    """Writes the updated dataframe back to Google Sheets."""
+    conn.update(data=df)
+
 def format_time_str(t_str):
-    """Safely formats screening times to HH:MM format (e.g., 21-30 or 21h30 -> 21:30)"""
+    """Safely formats screening times to HH:MM format."""
     if not t_str:
         return ""
     clean_t = str(t_str).strip().replace('-', ':').replace('h', ':').replace('H', ':')
@@ -38,47 +66,8 @@ def format_time_str(t_str):
         return f"{parts[0].zfill(2)}:{parts[1].zfill(2)}"
     return clean_t
 
-def init_db():
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS screenings (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            title TEXT,
-            cinema TEXT,
-            screening_date TEXT,
-            screening_time TEXT,
-            end_time TEXT,
-            format TEXT,
-            status TEXT,
-            url TEXT,
-            notes TEXT,
-            poster_url TEXT,
-            specialty_format TEXT,
-            presentation TEXT,
-            starred INTEGER DEFAULT 0,
-            private INTEGER DEFAULT 0,
-            synopsis TEXT
-        )
-    ''')
-    for col, col_type in [
-        ("poster_url", "TEXT"), 
-        ("notes", "TEXT"), 
-        ("specialty_format", "TEXT"), 
-        ("presentation", "TEXT"),
-        ("starred", "INTEGER DEFAULT 0"),
-        ("private", "INTEGER DEFAULT 0"),
-        ("synopsis", "TEXT")
-    ]:
-        try:
-            c.execute(f"ALTER TABLE screenings ADD COLUMN {col} {col_type}")
-        except sqlite3.OperationalError:
-            pass
-    conn.commit()
-    conn.close()
-
-# Initialize database on load
-init_db()
+# Fetch data on run
+df = get_data()
 
 # --- Password-Protected Bookmarklet Data Ingestion ---
 query_params = st.query_params
@@ -93,30 +82,27 @@ if "title" in query_params and "cinema" in query_params:
         in_poster = query_params.get("poster", "")
         in_url = query_params.get("url", "")
 
-        conn = sqlite3.connect(DB_NAME)
-        c = conn.cursor()
-        c.execute("""
-            INSERT INTO screenings (title, cinema, screening_date, screening_time, end_time, format, status, url, notes, poster_url, specialty_format, presentation, starred, private, synopsis) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            in_title, 
-            in_cinema, 
-            in_date, 
-            in_time, 
-            in_end_time, 
-            "VOST", 
-            "Scheduled", 
-            in_url, 
-            "",
-            in_poster,
-            "",
-            "",
-            0,
-            0,
-            ""
-        ))
-        conn.commit()
-        conn.close()
+        next_id = 1 if df.empty else df["id"].max() + 1
+        new_row = {
+            "id": next_id,
+            "title": in_title,
+            "cinema": in_cinema,
+            "screening_date": in_date,
+            "screening_time": in_time,
+            "end_time": in_end_time,
+            "format": "VOST",
+            "status": "Scheduled",
+            "url": in_url,
+            "notes": "",
+            "poster_url": in_poster,
+            "specialty_format": "",
+            "presentation": "",
+            "starred": 0,
+            "private": 0,
+            "synopsis": ""
+        }
+        df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+        save_data(df)
 
         st.query_params.clear()
         st.success(f"Successfully added: **{in_title}** at **{in_cinema}** ({in_time})")
@@ -172,52 +158,44 @@ if is_admin:
                     pres_str = ", ".join(add_pres)
                     date_str = add_date.strftime("%Y-%m-%d")
 
-                    conn = sqlite3.connect(DB_NAME)
-                    c = conn.cursor()
-                    c.execute("""
-                        INSERT INTO screenings (title, cinema, screening_date, screening_time, end_time, format, status, url, notes, poster_url, specialty_format, presentation, starred, private, synopsis) 
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (
-                        add_title.strip(), 
-                        add_cinema.strip(), 
-                        date_str, 
-                        formatted_time, 
-                        formatted_end_time, 
-                        "VOST", 
-                        "Scheduled", 
-                        add_url.strip(), 
-                        add_notes.strip(),
-                        "",
-                        fmt_str,
-                        pres_str,
-                        1 if add_starred else 0,
-                        1 if add_private else 0,
-                        add_synopsis.strip()
-                    ))
-                    conn.commit()
-                    conn.close()
+                    next_id = 1 if df.empty else int(df["id"].max()) + 1
+                    new_row = {
+                        "id": next_id,
+                        "title": add_title.strip(),
+                        "cinema": add_cinema.strip(),
+                        "screening_date": date_str,
+                        "screening_time": formatted_time,
+                        "end_time": formatted_end_time,
+                        "format": "VOST",
+                        "status": "Scheduled",
+                        "url": add_url.strip(),
+                        "notes": add_notes.strip(),
+                        "poster_url": "",
+                        "specialty_format": fmt_str,
+                        "presentation": pres_str,
+                        "starred": 1 if add_starred else 0,
+                        "private": 1 if add_private else 0,
+                        "synopsis": add_synopsis.strip()
+                    }
+                    df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+                    save_data(df)
+
                     st.success(f"Added **{add_title}**!")
                     st.rerun()
 
-# --- Fetch Data ---
-conn = sqlite3.connect(DB_NAME)
-df = pd.read_sql_query("SELECT * FROM screenings ORDER BY screening_date, screening_time", conn)
-conn.close()
-
+# --- Filter & Display ---
 if not df.empty:
-    # --- Sidebar Filtering Controls ---
     st.sidebar.header("Filter & View")
     
-    all_films = ["All"] + sorted(df["title"].dropna().unique().tolist())
+    all_films = ["All"] + sorted([x for x in df["title"].unique() if x])
     selected_film = st.sidebar.selectbox("Filter by Film", all_films)
 
-    all_dates = ["All"] + sorted(df["screening_date"].dropna().unique().tolist())
+    all_dates = ["All"] + sorted([x for x in df["screening_date"].unique() if x])
     selected_date = st.sidebar.selectbox("Filter by Date", all_dates)
 
-    all_cinemas = ["All"] + sorted(df["cinema"].dropna().unique().tolist())
+    all_cinemas = ["All"] + sorted([x for x in df["cinema"].unique() if x])
     selected_cinema = st.sidebar.selectbox("Filter by Cinema", all_cinemas)
     
-    # Apply Overall Filters
     filtered_df = df.copy()
     if selected_film != "All":
         filtered_df = filtered_df[filtered_df["title"] == selected_film]
@@ -233,23 +211,18 @@ if not df.empty:
     
     if primary_group == "Date":
         sort_options = ["Cinema", "Film", "Time"]
-        default_sort_index = 0
     elif primary_group == "Film":
         sort_options = ["Date", "Cinema"]
-        default_sort_index = 0
     else:
         sort_options = ["Date", "Film"]
-        default_sort_index = 0
         
-    secondary_sort = st.sidebar.selectbox("Sort within group by", sort_options, index=default_sort_index)
+    secondary_sort = st.sidebar.selectbox("Sort within group by", sort_options, index=0)
 
-    # --- Display Grouped & Sorted Screenings ---
     st.subheader(f"Screenings Grouped by {primary_group}")
     
     group_col_map = {"Date": "screening_date", "Film": "title", "Cinema": "cinema"}
     g_col = group_col_map[primary_group]
-    
-    unique_groups = sorted(filtered_df[g_col].dropna().unique())
+    unique_groups = sorted([x for x in filtered_df[g_col].unique() if x])
     
     if unique_groups:
         for g_val in unique_groups:
@@ -262,25 +235,17 @@ if not df.empty:
             else:
                 header_str = g_val
 
-            # Centered group header
             st.markdown(f"<h3 style='text-align: center;'>{header_str}</h3>", unsafe_allow_html=True)
             group_screenings = filtered_df[filtered_df[g_col] == g_val].copy()
 
-            # Display synopsis under header only when grouping by Film
             if primary_group == "Film" and not group_screenings.empty:
                 first_row = group_screenings.iloc[0]
                 synopsis_text = first_row.get("synopsis", "")
                 if synopsis_text:
                     st.info(synopsis_text)
             
-            sort_col_map = {
-                "Time": "screening_time", 
-                "Cinema": "cinema", 
-                "Film": "title", 
-                "Date": "screening_date"
-            }
-            s_col = sort_col_map[secondary_sort]
-            group_screenings = group_screenings.sort_values(by=s_col)
+            sort_col_map = {"Time": "screening_time", "Cinema": "cinema", "Film": "title", "Date": "screening_date"}
+            group_screenings = group_screenings.sort_values(by=sort_col_map[secondary_sort])
 
             for _, row in group_screenings.iterrows():
                 is_private_item = bool(row.get("private", 0))
@@ -293,20 +258,15 @@ if not df.empty:
                     continue
 
                 with st.container():
+                    col1, col2, col3 = st.columns([3, 2, 2]) if primary_group != "Film" else st.columns([3, 3, 2])
+
                     if primary_group == "Film":
-                        col1, col2, col3 = st.columns([3, 3, 2])
-                        
-                        # Cinema
                         with col1:
-                            cinema_val = str(row['cinema']) if row['cinema'] else ''
-                            star_prefix = "★ " if is_starred_item else ""
-                            display_cinema = f"{star_prefix}{cinema_val}"
+                            display_cinema = f"{'★ ' if is_starred_item else ''}{row.get('cinema', '')}"
                             if is_starred_item:
                                 st.markdown(f'<span class="starred-red">{display_cinema}</span>', unsafe_allow_html=True)
                             else:
                                 st.write(display_cinema)
-
-                        # Date & Time
                         with col2:
                             dt_val = f"{row['screening_date']} @ {format_time_str(row['screening_time'])}"
                             if row.get("end_time"):
@@ -315,57 +275,40 @@ if not df.empty:
                                 st.markdown(f'<span class="starred-red">{dt_val}</span>', unsafe_allow_html=True)
                             else:
                                 st.write(dt_val)
-
-                        # Link & Tags
                         with col3:
                             action_parts = []
-                            if row.get("url"):
-                                action_parts.append(f"[Tickets ↗]({row['url']})")
-                            if is_starred_item:
-                                action_parts.append("Starred")
-                            if row.get("specialty_format"):
-                                action_parts.append(row['specialty_format'])
-                            if row.get("presentation"):
-                                action_parts.append(row['presentation'])
-                            if row.get("notes"):
-                                action_parts.append(row['notes'])
-                            
+                            if row.get("url"): action_parts.append(f"[Tickets ↗]({row['url']})")
+                            if is_starred_item: action_parts.append("Starred")
+                            if row.get("specialty_format"): action_parts.append(row['specialty_format'])
+                            if row.get("presentation"): action_parts.append(row['presentation'])
+                            if row.get("notes"): action_parts.append(row['notes'])
                             action_str = " • ".join(action_parts)
                             if is_starred_item:
                                 st.markdown(f'<span class="starred-red">{action_str}</span>', unsafe_allow_html=True)
                             else:
                                 st.markdown(action_str)
-
                     else:
-                        col1, col2, col3 = st.columns([3, 2, 2])
-
-                        raw_title = f"★ {row['title']}" if is_starred_item else row['title']
+                        raw_title = f"{'★ ' if is_starred_item else ''}{row['title']}"
                         if is_private_item and is_admin:
                             raw_title = f"[PRIVATE] {raw_title}"
 
-                        # Title & Bundled Tags Column
                         with col1:
-                            if is_starred_item:
-                                if row.get("url"):
+                            if row.get("url"):
+                                if is_starred_item:
                                     st.markdown(f'<span class="starred-red"><a href="{row["url"]}" target="_blank">{raw_title}</a></span>', unsafe_allow_html=True)
                                 else:
-                                    st.markdown(f'<span class="starred-red">{raw_title}</span>', unsafe_allow_html=True)
-                            else:
-                                if row.get("url"):
                                     st.markdown(f"**[{raw_title}]({row['url']})**")
+                            else:
+                                if is_starred_item:
+                                    st.markdown(f'<span class="starred-red">{raw_title}</span>', unsafe_allow_html=True)
                                 else:
                                     st.markdown(f"**{raw_title}**")
                             
                             tag_parts = []
-                            if is_starred_item:
-                                tag_parts.append("Starred / Priority Selection")
-                            if row.get("specialty_format"):
-                                tag_parts.append(row['specialty_format'])
-                            if row.get("presentation"):
-                                tag_parts.append(row['presentation'])
-                            if row.get("notes"):
-                                tag_parts.append(row['notes'])
-                            
+                            if is_starred_item: tag_parts.append("Starred / Priority Selection")
+                            if row.get("specialty_format"): tag_parts.append(row['specialty_format'])
+                            if row.get("presentation"): tag_parts.append(row['presentation'])
+                            if row.get("notes"): tag_parts.append(row['notes'])
                             if tag_parts:
                                 full_tag_str = " • ".join(tag_parts)
                                 if is_starred_item:
@@ -373,7 +316,6 @@ if not df.empty:
                                 else:
                                     st.caption(full_tag_str)
 
-                        # Cinema Column
                         with col2:
                             cinema_val = str(row['cinema']) if row['cinema'] else ''
                             if is_starred_item:
@@ -381,12 +323,9 @@ if not df.empty:
                             else:
                                 st.write(cinema_val)
 
-                        # Time Column
                         with col3:
                             time_val = format_time_str(row['screening_time'])
-                            if row.get("end_time"):
-                                time_val += f" - {format_time_str(row['end_time'])}"
-                            
+                            if row.get("end_time"): time_val += f" - {format_time_str(row['end_time'])}"
                             if is_starred_item:
                                 st.markdown(f'<span class="starred-red">{time_val}</span>', unsafe_allow_html=True)
                             else:
@@ -394,32 +333,25 @@ if not df.empty:
 
                     # Owner Actions (Edit / Delete)
                     if is_admin:
-                        action_spacer, action_edit, action_del = st.columns([6, 1, 1])
+                        _, action_edit, action_del = st.columns([6, 1, 1])
                         with action_edit:
                             edit_key = f"editing_{row['id']}"
                             if edit_key not in st.session_state:
                                 st.session_state[edit_key] = False
-                            
                             if st.button("Edit", key=f"btn_edit_{row['id']}"):
                                 st.session_state[edit_key] = not st.session_state[edit_key]
                         with action_del:
                             if st.button("Delete", key=f"del_{row['id']}"):
-                                conn = sqlite3.connect(DB_NAME)
-                                c = conn.cursor()
-                                c.execute("DELETE FROM screenings WHERE id = ?", (row['id'],))
-                                conn.commit()
-                                conn.close()
+                                df = df[df["id"] != row["id"]]
+                                save_data(df)
                                 st.rerun()
 
-                        # Comprehensive Owner Edit Box (Editable for all fields)
                         if st.session_state.get(f"editing_{row['id']}", False):
                             with st.container():
                                 st.markdown("---")
                                 st.markdown(f"**Editing screening ID {row['id']}**")
-                                
                                 edit_title = st.text_input("Film Title", value=row['title'], key=f"edit_title_{row['id']}")
                                 edit_cinema = st.text_input("Cinema", value=row['cinema'], key=f"edit_cinema_{row['id']}")
-                                
                                 try:
                                     default_dt = datetime.strptime(row['screening_date'], "%Y-%m-%d").date()
                                 except ValueError:
@@ -427,27 +359,19 @@ if not df.empty:
                                 edit_date = st.date_input("Screening Date", value=default_dt, key=f"edit_date_{row['id']}")
                                 
                                 col_t1, col_t2 = st.columns(2)
-                                with col_t1:
-                                    edit_time = st.text_input("Start Time", value=row['screening_time'], key=f"edit_time_{row['id']}")
-                                with col_t2:
-                                    edit_end_time = st.text_input("End Time", value=row.get('end_time', '') or '', key=f"edit_endtime_{row['id']}")
+                                with col_t1: edit_time = st.text_input("Start Time", value=row['screening_time'], key=f"edit_time_{row['id']}")
+                                with col_t2: edit_end_time = st.text_input("End Time", value=row.get('end_time', '') or '', key=f"edit_endtime_{row['id']}")
 
                                 edit_url = st.text_input("Booking / Ticket URL", value=row.get('url', '') or '', key=f"edit_url_{row['id']}")
 
                                 col_s1, col_s2 = st.columns(2)
-                                with col_s1:
-                                    current_starred = bool(row.get("starred", 0))
-                                    new_starred = st.checkbox("Star this screening (Priority)", value=current_starred, key=f"star_chk_{row['id']}")
-                                with col_s2:
-                                    current_private = bool(row.get("private", 0))
-                                    new_private = st.checkbox("Hide from public view", value=current_private, key=f"priv_chk_{row['id']}")
+                                with col_s1: new_starred = st.checkbox("Star this screening", value=bool(row.get("starred", 0)), key=f"star_chk_{row['id']}")
+                                with col_s2: new_private = st.checkbox("Hide from public view", value=bool(row.get("private", 0)), key=f"priv_chk_{row['id']}")
 
-                                current_synopsis = row.get("synopsis", "") if row.get("synopsis") is not None else ""
-                                new_synopsis = st.text_area("Film Synopsis", value=current_synopsis, key=f"synopsis_{row['id']}")
-
+                                new_synopsis = st.text_area("Film Synopsis", value=row.get("synopsis", "") or "", key=f"synopsis_{row['id']}")
+                                
                                 all_fmt_options = ["16mm", "35mm", "70mm", "3D", "IMAX", "4DX"]
-                                current_fmt_str = row.get("specialty_format", "") if row.get("specialty_format") is not None else ""
-                                existing_fmt_list = [f.strip() for f in current_fmt_str.split(",") if f.strip()]
+                                existing_fmt_list = [f.strip() for f in (row.get("specialty_format", "") or "").split(",") if f.strip()]
                                 default_fmt_selected = [f for f in existing_fmt_list if f in all_fmt_options]
                                 custom_fmt_initial = ", ".join([f for f in existing_fmt_list if f not in all_fmt_options])
 
@@ -460,57 +384,37 @@ if not df.empty:
                                 final_fmt = ", ".join(combined_fmts)
 
                                 all_pres_options = ["Director", "Cast", "Crew", "Cinéclub", "Masterclass", "Open Air", "Cinéconcert", "Avant-Première"]
-                                current_pres_str = row.get("presentation", "") if row.get("presentation") is not None else ""
-                                default_pres_list = [p.strip() for p in current_pres_str.split(",") if p.strip() in all_pres_options]
-                                
+                                default_pres_list = [p.strip() for p in (row.get("presentation", "") or "").split(",") if p.strip() in all_pres_options]
                                 selected_pres_list = st.multiselect("Presentation / Event Types", all_pres_options, default=default_pres_list, key=f"pres_multi_{row['id']}")
                                 final_pres = ", ".join(selected_pres_list)
 
-                                current_notes = row["notes"] if row["notes"] is not None else ""
-                                new_notes = st.text_input("Additional Notes", value=current_notes, key=f"notes_{row['id']}")
+                                new_notes = st.text_input("Additional Notes", value=row.get("notes", "") or "", key=f"notes_{row['id']}")
 
                                 if st.button("Save Changes", key=f"save_{row['id']}"):
                                     if not edit_title.strip() or not edit_cinema.strip():
                                         st.error("Title and Cinema cannot be empty!")
                                     else:
-                                        formatted_time = format_time_str(edit_time)
-                                        formatted_end_time = format_time_str(edit_end_time)
-                                        date_str = edit_date.strftime("%Y-%m-%d")
+                                        idx = df[df["id"] == row["id"]].index[0]
+                                        df.at[idx, "title"] = edit_title.strip()
+                                        df.at[idx, "cinema"] = edit_cinema.strip()
+                                        df.at[idx, "screening_date"] = edit_date.strftime("%Y-%m-%d")
+                                        df.at[idx, "screening_time"] = format_time_str(edit_time)
+                                        df.at[idx, "end_time"] = format_time_str(edit_end_time)
+                                        df.at[idx, "url"] = edit_url.strip()
+                                        df.at[idx, "specialty_format"] = final_fmt
+                                        df.at[idx, "presentation"] = final_pres
+                                        df.at[idx, "notes"] = new_notes.strip()
+                                        df.at[idx, "starred"] = 1 if new_starred else 0
+                                        df.at[idx, "private"] = 1 if new_private else 0
+                                        df.at[idx, "synopsis"] = new_synopsis.strip()
 
-                                        conn = sqlite3.connect(DB_NAME)
-                                        c = conn.cursor()
-                                        c.execute("""
-                                            UPDATE screenings 
-                                            SET title = ?, cinema = ?, screening_date = ?, screening_time = ?, end_time = ?, url = ?, specialty_format = ?, presentation = ?, notes = ?, starred = ?, private = ?, synopsis = ? 
-                                            WHERE id = ?
-                                        """, (
-                                            edit_title.strip(), 
-                                            edit_cinema.strip(), 
-                                            date_str, 
-                                            formatted_time, 
-                                            formatted_end_time, 
-                                            edit_url.strip(), 
-                                            final_fmt, 
-                                            final_pres, 
-                                            new_notes.strip(), 
-                                            1 if new_starred else 0, 
-                                            1 if new_private else 0, 
-                                            new_synopsis.strip(), 
-                                            row['id']
-                                        ))
-                                        conn.commit()
-                                        conn.close()
+                                        save_data(df)
                                         st.session_state[f"editing_{row['id']}"] = False
                                         st.success("Screening successfully updated!")
                                         st.rerun()
                                 st.markdown("---")
-
             st.divider()
     else:
         st.info("No screenings match your current filters.")
-
-    if is_admin:
-        with st.expander("View Raw Table & Management"):
-            st.dataframe(filtered_df, use_container_width=True)
 else:
-    st.info("No screenings saved yet. Use your Filmorama bookmarklet or sidebar to add screenings.")
+    st.info("No screenings saved yet. Use your bookmarklet or sidebar to add screenings.")
