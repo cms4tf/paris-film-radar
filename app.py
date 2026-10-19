@@ -36,6 +36,25 @@ except Exception:
 
 HEADERS = {"Content-Type": "application/json", "X-Master-Key": API_KEY}
 
+DEFAULT_COLUMNS = [
+    "id",
+    "title",
+    "cinema",
+    "screening_date",
+    "screening_time",
+    "end_time",
+    "format",
+    "status",
+    "url",
+    "notes",
+    "poster_url",
+    "specialty_format",
+    "presentation",
+    "starred",
+    "private",
+    "synopsis",
+]
+
 
 def format_time_str(t_str):
   """Safely formats screening times to HH:MM format (e.g., 21-30 or 21h30 -> 21:30)"""
@@ -59,63 +78,17 @@ def load_data():
     if response.status_code == 200:
       record = response.json().get("record", [])
       if not record or not isinstance(record, list):
-        return pd.DataFrame(columns=[
-            "id",
-            "title",
-            "cinema",
-            "screening_date",
-            "screening_time",
-            "end_time",
-            "format",
-            "status",
-            "url",
-            "notes",
-            "poster_url",
-            "specialty_format",
-            "presentation",
-            "starred",
-            "private",
-            "synopsis",
-        ])
-      return pd.DataFrame(record)
+        return pd.DataFrame(columns=DEFAULT_COLUMNS)
+      df_loaded = pd.DataFrame(record)
+      # Ensure all default columns exist
+      for col in DEFAULT_COLUMNS:
+        if col not in df_loaded.columns:
+          df_loaded[col] = ""
+      return df_loaded
     else:
-      return pd.DataFrame(columns=[
-          "id",
-          "title",
-          "cinema",
-          "screening_date",
-          "screening_time",
-          "end_time",
-          "format",
-          "status",
-          "url",
-          "notes",
-          "poster_url",
-          "specialty_format",
-          "presentation",
-          "starred",
-          "private",
-          "synopsis",
-      ])
+      return pd.DataFrame(columns=DEFAULT_COLUMNS)
   except Exception:
-    return pd.DataFrame(columns=[
-        "id",
-        "title",
-        "cinema",
-        "screening_date",
-        "screening_time",
-        "end_time",
-        "format",
-        "status",
-        "url",
-        "notes",
-        "poster_url",
-        "specialty_format",
-        "presentation",
-        "starred",
-        "private",
-        "synopsis",
-    ])
+    return pd.DataFrame(columns=DEFAULT_COLUMNS)
 
 
 def save_to_cloud(df):
@@ -275,8 +248,8 @@ if is_admin:
             st.success(f"Added **{add_title}**!")
             st.rerun()
 
-# Sort dataframe globally for view rendering
-if not df.empty:
+# Sort dataframe globally for view rendering if not empty
+if not df.empty and "screening_date" in df.columns:
   df = df.sort_values(by=["screening_date", "screening_time"], na_position="last")
 
 if not df.empty:
