@@ -703,7 +703,7 @@ if not df.empty:
                 )
                 default_pres_list = [
                     p.strip()
-                    for p in current_pres_str.split(",")
+                    for p in str(current_pres_str).split(",")
                     if p.strip() in all_pres_options
                 ]
 
