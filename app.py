@@ -97,11 +97,14 @@ def load_data():
         df_loaded = df_loaded[df_loaded["title"].astype(str).str.strip() != ""]
 
         if "id" not in df_loaded.columns or df_loaded["id"].isnull().all():
-          df_loaded["id"] = range(1, len(df_loaded) + 1)
+          df_loaded["id"] = [
+              int(datetime.now().timestamp() * 1000) + i
+              for i in range(len(df_loaded))
+          ]
         else:
           df_loaded["id"] = (
               pd.to_numeric(df_loaded["id"], errors="coerce")
-              .fillna(0)
+              .fillna(int(datetime.now().timestamp() * 1000))
               .astype(int)
           )
 
@@ -156,11 +159,7 @@ if "title" in query_params and "cinema" in query_params:
     in_poster = query_params.get("poster", "")
     in_url = query_params.get("url", "")
 
-    new_id = (
-        int(df["id"].max() + 1)
-        if not df.empty and pd.to_numeric(df["id"], errors="coerce").max() > 0
-        else 1
-    )
+    new_id = int(datetime.now().timestamp() * 1000)
 
     new_row = {
         "id": new_id,
@@ -252,12 +251,7 @@ if is_admin:
           pres_str = ", ".join(add_pres)
           date_str = add_date.strftime("%Y-%m-%d")
 
-          new_id = (
-              int(df["id"].max() + 1)
-              if not df.empty
-              and pd.to_numeric(df["id"], errors="coerce").max() > 0
-              else 1
-          )
+          new_id = int(datetime.now().timestamp() * 1000)
 
           new_row = {
               "id": new_id,
@@ -283,7 +277,7 @@ if is_admin:
             st.success(f"Added **{add_title}**!")
             st.rerun()
 
-# Sort dataframe globally for view rendering if not empty
+# Fetch & Sort Data
 if not df.empty and "screening_date" in df.columns:
   df = df.sort_values(by=["screening_date", "screening_time"], na_position="last")
 
