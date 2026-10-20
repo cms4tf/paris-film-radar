@@ -6,7 +6,7 @@ import requests
 import streamlit as st
 
 # Page Configuration
-st.set_page_config(page_title="Paris Film Radar", page_icon="🎬", layout="wide")
+st.set_page_config(page_title="Paris Film Radar", page_icon="", layout="wide")
 
 # Global CSS override for red starred items
 st.markdown(
@@ -29,7 +29,7 @@ st.markdown(
 DB_NAME = "screenings.db"
 OWNER_PASSWORD = "GODARD68"
 
-# --- GitHub Gist Credentials ---
+# --- GitHub Gist Configuration ---
 try:
   GIST_TOKEN = st.secrets["GIST_TOKEN"]
   GIST_ID = st.secrets["GIST_ID"]
@@ -45,7 +45,7 @@ GIST_HEADERS = {
 
 
 def push_local_to_gist():
-  """Pushes the current state of SQLite local database up to the GitHub Gist"""
+  """Pushes local SQLite database up to the GitHub Gist safely"""
   try:
     conn = sqlite3.connect(DB_NAME)
     conn.row_factory = sqlite3.Row
@@ -64,7 +64,7 @@ def push_local_to_gist():
 
 
 def pull_gist_to_local():
-  """Downloads JSON data from GitHub Gist and syncs with local SQLite database on startup"""
+  """Pulls remote Gist data down to local SQLite on startup without losing data"""
   try:
     url = f"https://api.github.com/gists/{GIST_ID}"
     response = requests.get(url, headers=GIST_HEADERS, timeout=5)
@@ -80,7 +80,6 @@ def pull_gist_to_local():
         c.execute("SELECT COUNT(*) FROM screenings")
         local_count = c.fetchone()[0]
 
-        # If Gist has records, sync them locally. If Gist is empty but local has data, push local up!
         if records and isinstance(records, list):
           c.execute("DELETE FROM screenings")
           for r in records:
@@ -110,7 +109,6 @@ def pull_gist_to_local():
             )
           conn.commit()
         elif not records and local_count > 0:
-          # Gist was blank `[]`, but local database has items—preserve local by pushing up!
           conn.close()
           push_local_to_gist()
           return
@@ -172,7 +170,7 @@ def init_db():
   conn.close()
 
 
-# Initialize database and sync remote data from Gist on load
+# Initialize database and sync storage on load
 init_db()
 pull_gist_to_local()
 
@@ -219,6 +217,7 @@ if "title" in query_params and "cinema" in query_params:
     conn.commit()
     conn.close()
 
+    # Sync to Gist
     push_local_to_gist()
 
     st.query_params.clear()
@@ -247,7 +246,7 @@ if is_admin:
   st.sidebar.success("Owner mode unlocked.")
 
   # --- Owner-Only Manual Screening Creation Form ---
-  with st.sidebar.expander("➕ Manually Add Screening"):
+  with st.sidebar.expander(" Manually Add Screening"):
     with st.form("manual_add_form", clear_on_submit=True):
       add_title = st.text_input("Film Title*")
       add_cinema = st.text_input("Cinema Name*")
@@ -318,6 +317,7 @@ if is_admin:
           conn.commit()
           conn.close()
 
+          # Sync to Gist
           push_local_to_gist()
 
           st.success(f"Added **{add_title}**!")
@@ -394,12 +394,14 @@ if not df.empty:
       else:
         header_str = str(g_val)
 
+      # Centered group header
       st.markdown(
           f"<h3 style='text-align: center;'>{header_str}</h3>",
           unsafe_allow_html=True,
       )
       group_screenings = filtered_df[filtered_df[g_col] == g_val].copy()
 
+      # Display synopsis under header only when grouping by Film
       if primary_group == "Film" and not group_screenings.empty:
         first_row = group_screenings.iloc[0]
         synopsis_text = first_row.get("synopsis", "")
@@ -429,9 +431,10 @@ if not df.empty:
           if primary_group == "Film":
             col1, col2, col3 = st.columns([3, 3, 2])
 
+            # Cinema
             with col1:
               cinema_val = str(row["cinema"]) if row["cinema"] else ""
-              star_prefix = "★ " if is_starred_item else ""
+              star_prefix = " " if is_starred_item else ""
               display_cinema = f"{star_prefix}{cinema_val}"
               if is_starred_item:
                 st.markdown(
@@ -441,6 +444,7 @@ if not df.empty:
               else:
                 st.write(display_cinema)
 
+            # Date & Time
             with col2:
               dt_val = f"{row['screening_date']} @ {format_time_str(row['screening_time'])}"
               if row.get("end_time"):
@@ -453,10 +457,11 @@ if not df.empty:
               else:
                 st.write(dt_val)
 
+            # Link & Tags
             with col3:
               action_parts = []
               if row.get("url"):
-                action_parts.append(f"[Tickets ↗]({row['url']})")
+                action_parts.append(f"[Tickets ]({row['url']})")
               if is_starred_item:
                 action_parts.append("Starred")
               if row.get("specialty_format"):
@@ -478,12 +483,11 @@ if not df.empty:
           else:
             col1, col2, col3 = st.columns([3, 2, 2])
 
-            raw_title = (
-                f"★ {row['title']}" if is_starred_item else row["title"]
-            )
+            raw_title = f" {row['title']}" if is_starred_item else row["title"]
             if is_private_item and is_admin:
               raw_title = f"[PRIVATE] {raw_title}"
 
+            # Title & Bundled Tags Column
             with col1:
               if is_starred_item:
                 if row.get("url"):
@@ -524,6 +528,7 @@ if not df.empty:
                 else:
                   st.caption(full_tag_str)
 
+            # Cinema Column
             with col2:
               cinema_val = str(row["cinema"]) if row["cinema"] else ""
               if is_starred_item:
@@ -534,6 +539,7 @@ if not df.empty:
               else:
                 st.write(cinema_val)
 
+            # Time Column
             with col3:
               time_val = format_time_str(row["screening_time"])
               if row.get("end_time"):
@@ -565,10 +571,11 @@ if not df.empty:
                 conn.commit()
                 conn.close()
 
+                # Sync to Gist
                 push_local_to_gist()
                 st.rerun()
 
-            # Comprehensive Owner Edit Box
+            # Comprehensive Owner Edit Box (Editable for all fields)
             if st.session_state.get(f"editing_{row['id']}", False):
               with st.container():
                 st.markdown("---")
@@ -752,6 +759,7 @@ if not df.empty:
                     conn.commit()
                     conn.close()
 
+                    # Sync to Gist
                     push_local_to_gist()
 
                     st.session_state[f"editing_{row['id']}"] = False
