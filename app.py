@@ -44,8 +44,27 @@ GIST_HEADERS = {
 }
 
 
+def push_local_to_gist():
+  """Pushes the current state of SQLite local database up to the GitHub Gist"""
+  try:
+    conn = sqlite3.connect(DB_NAME)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.execute("SELECT * FROM screenings")
+    rows = [dict(row) for row in c.fetchall()]
+    conn.close()
+
+    payload = {
+        "files": {GIST_FILENAME: {"content": json.dumps(rows, indent=2)}}
+    }
+    url = f"https://api.github.com/gists/{GIST_ID}"
+    requests.patch(url, json=payload, headers=GIST_HEADERS, timeout=5)
+  except Exception:
+    pass
+
+
 def pull_gist_to_local():
-  """Downloads JSON data from GitHub Gist and populates the local SQLite database on startup"""
+  """Downloads JSON data from GitHub Gist and syncs with local SQLite database on startup"""
   try:
     url = f"https://api.github.com/gists/{GIST_ID}"
     response = requests.get(url, headers=GIST_HEADERS, timeout=5)
@@ -55,10 +74,14 @@ def pull_gist_to_local():
       if GIST_FILENAME in files:
         content = files[GIST_FILENAME].get("content", "[]")
         records = json.loads(content)
+
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("SELECT COUNT(*) FROM screenings")
+        local_count = c.fetchone()[0]
+
+        # If Gist has records, sync them locally. If Gist is empty but local has data, push local up!
         if records and isinstance(records, list):
-          conn = sqlite3.connect(DB_NAME)
-          c = conn.cursor()
-          # Clear existing local ephemeral data and replace with Gist truth
           c.execute("DELETE FROM screenings")
           for r in records:
             c.execute(
@@ -86,26 +109,12 @@ def pull_gist_to_local():
                 ),
             )
           conn.commit()
+        elif not records and local_count > 0:
+          # Gist was blank `[]`, but local database has items—preserve local by pushing up!
           conn.close()
-  except Exception:
-    pass  # Fallback to local db if offline
-
-
-def push_local_to_gist():
-  """Pushes the current state of SQLite local database up to the GitHub Gist"""
-  try:
-    conn = sqlite3.connect(DB_NAME)
-    conn.row_factory = sqlite3.Row
-    c = conn.cursor()
-    c.execute("SELECT * FROM screenings")
-    rows = [dict(row) for row in c.fetchall()]
-    conn.close()
-
-    payload = {
-        "files": {GIST_FILENAME: {"content": json.dumps(rows, indent=2)}}
-    }
-    url = f"https://api.github.com/gists/{GIST_ID}"
-    requests.patch(url, json=payload, headers=GIST_HEADERS, timeout=5)
+          push_local_to_gist()
+          return
+        conn.close()
   except Exception:
     pass
 
@@ -163,7 +172,7 @@ def init_db():
   conn.close()
 
 
-# Initialize database and pull latest remote data from Gist on load
+# Initialize database and sync remote data from Gist on load
 init_db()
 pull_gist_to_local()
 
@@ -210,7 +219,6 @@ if "title" in query_params and "cinema" in query_params:
     conn.commit()
     conn.close()
 
-    # Sync to GitHub Gist
     push_local_to_gist()
 
     st.query_params.clear()
@@ -310,7 +318,6 @@ if is_admin:
           conn.commit()
           conn.close()
 
-          # Sync to GitHub Gist
           push_local_to_gist()
 
           st.success(f"Added **{add_title}**!")
@@ -387,14 +394,12 @@ if not df.empty:
       else:
         header_str = str(g_val)
 
-      # Centered group header
       st.markdown(
           f"<h3 style='text-align: center;'>{header_str}</h3>",
           unsafe_allow_html=True,
       )
       group_screenings = filtered_df[filtered_df[g_col] == g_val].copy()
 
-      # Display synopsis under header only when grouping by Film
       if primary_group == "Film" and not group_screenings.empty:
         first_row = group_screenings.iloc[0]
         synopsis_text = first_row.get("synopsis", "")
@@ -424,7 +429,6 @@ if not df.empty:
           if primary_group == "Film":
             col1, col2, col3 = st.columns([3, 3, 2])
 
-            # Cinema
             with col1:
               cinema_val = str(row["cinema"]) if row["cinema"] else ""
               star_prefix = "★ " if is_starred_item else ""
@@ -437,7 +441,6 @@ if not df.empty:
               else:
                 st.write(display_cinema)
 
-            # Date & Time
             with col2:
               dt_val = f"{row['screening_date']} @ {format_time_str(row['screening_time'])}"
               if row.get("end_time"):
@@ -450,7 +453,6 @@ if not df.empty:
               else:
                 st.write(dt_val)
 
-            # Link & Tags
             with col3:
               action_parts = []
               if row.get("url"):
@@ -482,7 +484,6 @@ if not df.empty:
             if is_private_item and is_admin:
               raw_title = f"[PRIVATE] {raw_title}"
 
-            # Title & Bundled Tags Column
             with col1:
               if is_starred_item:
                 if row.get("url"):
@@ -523,7 +524,6 @@ if not df.empty:
                 else:
                   st.caption(full_tag_str)
 
-            # Cinema Column
             with col2:
               cinema_val = str(row["cinema"]) if row["cinema"] else ""
               if is_starred_item:
@@ -534,7 +534,6 @@ if not df.empty:
               else:
                 st.write(cinema_val)
 
-            # Time Column
             with col3:
               time_val = format_time_str(row["screening_time"])
               if row.get("end_time"):
@@ -566,11 +565,10 @@ if not df.empty:
                 conn.commit()
                 conn.close()
 
-                # Sync to GitHub Gist
                 push_local_to_gist()
                 st.rerun()
 
-            # Comprehensive Owner Edit Box (Editable for all fields)
+            # Comprehensive Owner Edit Box
             if st.session_state.get(f"editing_{row['id']}", False):
               with st.container():
                 st.markdown("---")
@@ -754,7 +752,6 @@ if not df.empty:
                     conn.commit()
                     conn.close()
 
-                    # Sync to GitHub Gist
                     push_local_to_gist()
 
                     st.session_state[f"editing_{row['id']}"] = False
